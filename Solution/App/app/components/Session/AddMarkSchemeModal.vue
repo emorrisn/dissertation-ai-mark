@@ -9,7 +9,7 @@
       <UTabs
         :items="items"
         variant="link"
-        :ui="{ trigger: 'grow p-4', content: 'p-4 max-w-5xl mx-auto space-y-4' }"
+        :ui="{ trigger: 'grow p-4', content: 'p-4 max-w-5xl mx-auto space-y-4 pt-0' }"
         class="gap-4 w-full"
       >
         <template #text="{ item }">
@@ -62,6 +62,60 @@
             />
           </div>
         </template>
+
+        <template #camera="{ item }">
+          <UAlert
+            icon="i-lucide-camera"
+            color="primary"
+            variant="soft"
+            title="Camera Capture"
+            :description="item.description"
+          />
+
+          <div class="space-y-4">
+            <div class="relative rounded-lg overflow-hidden bg-black">
+              <!-- LIVE CAMERA -->
+              <video
+                v-if="!cameraImage"
+                ref="cameraVideo"
+                autoplay
+                playsinline
+                class="w-full min-h-[400px] h-full object-cover"
+              />
+
+              <!-- CAPTURED IMAGE -->
+              <img v-else :src="cameraImage" class="w-full min-h-[400px] object-contain bg-black" />
+
+              <!-- Scan overlay only when camera active -->
+              <div v-if="!cameraImage" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div class="w-[85%] h-[85%] border-4 border-white/70 rounded-xl"></div>
+              </div>
+            </div>
+
+            <div class="flex gap-3">
+              <!-- TAKE PHOTO -->
+              <UButton v-if="!cameraImage" icon="i-lucide-camera" label="Take Picture" @click="takeCameraPicture" />
+
+              <!-- RETRY -->
+              <UButton
+                v-if="cameraImage"
+                icon="i-lucide-rotate-ccw"
+                variant="outline"
+                label="Retry"
+                @click="retryCamera"
+              />
+
+              <!-- SAVE -->
+              <UButton
+                v-if="cameraImage"
+                icon="i-lucide-check"
+                color="primary"
+                label="Save Mark Scheme"
+                @click="saveCameraImage"
+              />
+            </div>
+          </div>
+        </template>
       </UTabs>
     </template>
   </UModal>
@@ -78,9 +132,38 @@ import type { SessionFile } from '~/types';
 
 const emit = defineEmits<{ close: [boolean] }>();
 
+const cameraVideo = ref<HTMLVideoElement | null>(null);
+const cameraImage = ref<string | null>(null);
+let cameraStream: MediaStream | null = null;
+
+watch(cameraVideo, async (el) => {
+  if (!el) return;
+
+  cameraStream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment' }
+  });
+
+  el.srcObject = cameraStream;
+});
+
+async function takeCameraPicture() {
+  if (!cameraVideo.value) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = cameraVideo.value.videoWidth;
+  canvas.height = cameraVideo.value.videoHeight;
+
+  const ctx = canvas.getContext('2d');
+  ctx?.drawImage(cameraVideo.value, 0, 0);
+
+  const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.9));
+
+  cameraImage.value = URL.createObjectURL(blob);
+}
+
 const items = [
   {
-    label: 'Text Instructions',
+    label: 'Text',
     description:
       'Provide a detailed marking scheme or rubric as plain text. This will be used by the AI to understand the criteria for marking.',
     icon: 'i-lucide-whole-word',
@@ -91,6 +174,12 @@ const items = [
     description: 'Upload documents (.pdf, .docx) or images to be used as marking schemes. ',
     icon: 'i-lucide-file-up',
     slot: 'file' as const
+  },
+  {
+    label: 'Camera',
+    description: 'Take photos of a physical mark scheme.',
+    icon: 'i-lucide-camera',
+    slot: 'camera' as const
   }
 ] satisfies TabsItem[];
 
@@ -140,6 +229,33 @@ async function handleFileSubmit() {
   } finally {
     fileUploading.value = false;
   }
+}
+
+function retryCamera() {
+  if (cameraImage.value) {
+    URL.revokeObjectURL(cameraImage.value);
+  }
+
+  cameraImage.value = null;
+}
+
+function saveCameraImage() {
+  if (!cameraImage.value || !currentSession.value) return;
+
+  const now = new Date().toISOString();
+
+  const file: SessionFile = {
+    id: crypto.randomUUID(),
+    url: cameraImage.value,
+    name: `markscheme-${Date.now()}.jpg`,
+    storageUrl: '',
+    size: 0,
+    uploadedAt: now
+  };
+
+  markingStore.addMarkScheme({ file });
+
+  resetAndClose();
 }
 
 function resetAndClose() {
