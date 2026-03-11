@@ -1,0 +1,12 @@
+[
+  {
+    "code": "oxford",
+    "name": "University of Oxford",
+    "api_url": "http://127.0.0.1:5000"
+  },
+  {
+    "code": "cambridge",
+    "name": "University of Cambridge",
+    "api_url": "http://127.0.0.1:5000"
+  }
+]

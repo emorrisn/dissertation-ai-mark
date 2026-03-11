@@ -11,13 +11,14 @@
             <UButton
               icon="i-lucide-refresh-cw"
               variant="ghost"
-              :loading="updatesStore.status == 'loading'"
+              :loading="updatesStore.status === 'loading'"
               @click="refresh"
             />
           </div>
         </template>
       </UDashboardNavbar>
     </template>
+
     <template #body>
       <UScrollArea
         v-if="items.length && updatesStore.status !== 'loading'"
@@ -25,10 +26,23 @@
         :items="items"
         class="w-full h-full max-w-5xl mx-auto border-l border-r border-default"
       >
-        <UPageCard v-bind="item" :variant="index % 2 === 0 ? 'soft' : 'outline'" class="rounded-none" />
+        <UPageCard
+          v-bind="item"
+          :variant="index % 2 === 0 ? 'soft' : 'outline'"
+          class="rounded-none cursor-pointer"
+          @click="handleClick(item)"
+        >
+          <template #footer>
+            <div class="flex gap-2">
+              <UBadge v-if="!item.isRead">New</UBadge>
+              <UBadge color="neutral" variant="soft">{{ new Date(item.timestamp).toLocaleString() }}</UBadge>
+            </div>
+          </template>
+        </UPageCard>
       </UScrollArea>
+
       <UEmpty
-        v-else-if="updatesStore.status == 'loading'"
+        v-else-if="updatesStore.status === 'loading'"
         icon="i-lucide-wifi"
         title="Loading Updates"
         description="Fetching your latest updates. Please wait..."
@@ -37,16 +51,16 @@
           root: 'ring-0'
         }"
       />
+
       <UEmpty
         v-else
         icon="i-lucide-bell-off"
         title="No Updates Yet"
         description="Your latest updates will appear here. Check back soon for notifications about your marking sessions, feedback, and more!"
-        :ui="{
-          root: 'ring-0'
-        }"
+        :ui="{ root: 'ring-0' }"
       />
     </template>
+
     <template #footer>
       <DashboardMobileNav />
     </template>
@@ -56,13 +70,16 @@
 <script lang="ts" setup>
 import { storeToRefs } from 'pinia';
 import { useUpdatesStore } from '~/stores/updates';
+import type { UserUpdate } from '~/types';
 
 definePageMeta({
-  layout: 'dashboard'
+  layout: 'dashboard',
+  middleware: 'auth'
 });
 
 const updatesStore = useUpdatesStore();
 const { sortedUpdates } = storeToRefs(updatesStore);
+const router = useRouter();
 
 onMounted(() => {
   if (!updatesStore.updates.length) {
@@ -74,25 +91,35 @@ const refresh = () => {
   updatesStore.fetchUpdates();
 };
 
-const items = computed(() => {
-  // Filter out any potential undefined values in the array to prevent runtime errors.
-  // This is a defensive measure against unexpected states in the store.
-  return sortedUpdates.value.filter(Boolean).map((update) => {
-    const iconMap: Record<string, string> = {
-      MarkingSessionUpdate: 'i-lucide-check-circle-2',
-      NewFeature: 'i-lucide-sparkles',
-      SystemMessage: 'i-lucide-info'
-    };
+const handleClick = async (item: UserUpdate) => {
+  if (!item.isRead) {
+    await updatesStore.markAsRead(item.id);
+  }
+  if (item.link) {
+    await router.push(item.link);
+  }
+};
 
-    return {
+const items = computed(() => {
+  const iconMap: Record<string, string> = {
+    MarkingSessionUpdate: 'i-lucide-check-circle-2',
+    NewFeature: 'i-lucide-sparkles',
+    SystemMessage: 'i-lucide-info',
+    SecurityUpdate: 'i-lucide-lock'
+  };
+
+  console.log(
+    sortedUpdates.value.filter(Boolean).map((update) => ({
       ...update,
       icon: iconMap[update.type] || 'i-lucide-bell',
-      description: update.message,
-      to: update.link,
-      badge: update.isRead ? null : { label: 'New', color: 'primary' as const }
-    };
-  });
+      description: update.message
+    }))
+  );
+
+  return sortedUpdates.value.filter(Boolean).map((update) => ({
+    ...update,
+    icon: iconMap[update.type] || 'i-lucide-bell',
+    description: update.message
+  }));
 });
 </script>
-
-<style></style>

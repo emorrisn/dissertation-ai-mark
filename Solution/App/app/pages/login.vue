@@ -7,6 +7,7 @@ import type { FormSubmitEvent } from '#ui/types';
 const open = ref(true);
 const loading = ref(false);
 const route = useRoute();
+const form = useTemplateRef('form');
 
 // Set institution from URL query
 const institutionQuery = route.query.institution;
@@ -35,7 +36,8 @@ onMounted(() => {
   if (!institutionQuery) {
     toast.add({
       title: 'No institution selected',
-      description: 'Please select an institution first.'
+      description: 'Please select an institution first.',
+      color: 'error'
     });
     router.push('/');
   }
@@ -49,7 +51,13 @@ async function login(event: FormSubmitEvent<Schema>) {
   } catch (error: any) {
     toast.add({
       title: 'Login Failed',
-      description: error.data?.message || 'An unexpected error occurred.'
+      description: error.data?.message || 'An unexpected error occurred.',
+      color: 'error'
+    });
+
+    form.value?.errors.push({
+      name: 'username',
+      message: error.data?.message || 'An unexpected error occurred.'
     });
   } finally {
     loading.value = false;
@@ -74,7 +82,7 @@ definePageMeta({
           <h1 class="text-3xl md:text-4xl font-extrabold mb-4">Account</h1>
 
           <div class="space-y-4">
-            <UForm :schema="loginSchema" :state="state" class="space-y-4" @submit="login">
+            <UForm ref="form" :schema="loginSchema" :state="state" class="space-y-4" @submit="login">
               <UFormField name="username" label="Username">
                 <UInput v-model="state.username" placeholder="Username" class="w-full" />
               </UFormField>

@@ -28,7 +28,7 @@
       >
         <UPageCard
           :title="`Marking Session - ${new Date(session.createdAt).toLocaleDateString('en-GB')}`"
-          :to="`/dashboard/marking/${session.sessionId}`"
+          :to="`/dashboard/marking/${session.id}`"
           :badge="{
             label: session.status,
             color: session.status === 'completed' ? 'green' : session.status === 'processing' ? 'orange' : 'gray',

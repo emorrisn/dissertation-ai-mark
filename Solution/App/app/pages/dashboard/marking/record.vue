@@ -1,103 +1,174 @@
 <template>
   <UDashboardPanel id="record">
     <template #header>
-      <UDashboardNavbar title="Student 1">
+      <UDashboardNavbar :title="`Student ${markingStore.currentSession?.selectedStudent ?? 1}`">
         <template #right>
-          <UButton color="primary" variant="outline" size="lg"> Finish Marking </UButton>
+          <UButton color="primary" variant="outline" size="lg" @click="finishMarking"> Finish Marking </UButton>
         </template>
       </UDashboardNavbar>
     </template>
     <template #body>
-      <div class="max-w-5xl mx-auto space-y-4 h-full">
-        <UCard
-          class="h-3/4 w-full flex items-center justify-center overflow-hidden relative"
-          :ui="{ body: 'p-0 sm:p-0 w-full h-full' }"
-        >
-          <video ref="video" autoplay playsinline class="w-full h-full object-cover object-center rounded-lg" />
-
-          <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div class="w-[85%] h-[85%] border-4 border-white/70 rounded-xl shadow-inner border-dotted"></div>
-          </div>
-        </UCard>
+      <div class="max-w-5xl mx-auto h-full flex flex-col gap-4">
+        <SessionCamera ref="camera" />
 
         <UCarousel v-slot="{ item, index }" dots :items="items" :ui="{ item: 'basis-1/3' }">
-          <img
-            :src="item"
-            class="rounded-lg hover:opacity-75 transition cursor-pointer object-cover w-full"
-            loading="lazy"
-            @click="removeImage(item, index)"
-          />
+          <div class="relative">
+            <img
+              :src="item.url"
+              class="rounded-lg hover:opacity-75 transition cursor-pointer object-cover w-full"
+              loading="lazy"
+              @click="removeImage(item, index)"
+            />
+
+            <div class="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded-md">
+              Page {{ items.length - index }}
+            </div>
+          </div>
         </UCarousel>
       </div>
     </template>
     <template #footer>
       <div class="flex justify-center p-4 gap-3 border-t border-default">
-        <UButton color="primary" size="lg" class="w-2/3 sm:w-1/3 justify-center" @click="takePicture">
+        <UButton
+          color="primary"
+          size="lg"
+          class="w-2/3 sm:w-1/3 justify-center"
+          :disabled="takingPhoto"
+          @click="takePicture"
+        >
           Take Picture
         </UButton>
-        <UButton color="neutral" size="lg"> Next Student (1/32) </UButton>
+        <UButton
+          color="neutral"
+          size="lg"
+          :disabled="items.length === 0"
+          :loading="switchingStudent"
+          @click="nextStudent"
+        >
+          {{ isLastStudent ? 'Add Student' : 'Next Student' }} ({{
+            markingStore.currentSession?.selectedStudent ?? 1
+          }}/{{ markingStore.currentSession?.studentsAmount ? markingStore.currentSession.studentsAmount - 1 : 1 }})
+        </UButton>
       </div>
     </template>
   </UDashboardPanel>
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted } from 'vue';
-import imageCompression from 'browser-image-compression';
-import { LazyUIConfirmationPopup } from '#components';
+import { ref, onMounted, computed } from 'vue';
+import { LazyUIConfirmationPopup, SessionCamera } from '#components';
+import type { SessionFile, StudentSubmission } from '~/types';
 
-const video = ref<HTMLVideoElement | null>(null);
-const items = ref<string[]>([]);
-let stream: MediaStream | null = null;
+const router = useRouter();
 const overlay = useOverlay();
+const toast = useToast();
+const markingStore = useMarkingStore();
+
 const confirmationModal = overlay.create(LazyUIConfirmationPopup);
 
-onMounted(async () => {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' }
-    });
+const items = ref<{ url: string; blob: Blob }[]>([]);
 
-    if (video.value) {
-      video.value.srcObject = stream;
-    }
-  } catch (err) {
-    console.error('Camera error:', err);
+const switchingStudent = ref(false);
+const takingPhoto = ref(false);
+
+const isLastStudent = computed(() => {
+  if (!markingStore.currentSession) return false;
+  return (markingStore.currentSession.selectedStudent ?? 1) >= markingStore.currentSession.studentsAmount;
+});
+
+onMounted(async () => {
+  if (!markingStore.currentSession) {
+    await router.push('/dashboard/marking');
+    toast.add({
+      title: 'No session found',
+      description: 'Please select a marking session first.'
+    });
+    return;
   }
 });
 
-async function removeImage(url: string, index: number) {
+const camera = ref<InstanceType<typeof SessionCamera> | null>(null);
+
+async function takePicture() {
+  const photo = await camera.value?.takePhoto();
+  if (!photo) return;
+  items.value.unshift(photo);
+}
+
+async function removeImage(item: { url: string }, index: number) {
   const instance = confirmationModal.open({
-    description: `Delete image #${index + 1}`
+    title: `Delete page #${items.value.length - index}?`,
+    image: item.url
   });
   const shouldDelete = await instance.result;
 
   if (shouldDelete) {
-    items.value = items.value.filter((item) => item !== url);
-    URL.revokeObjectURL(url);
+    items.value = items.value.filter((i) => i !== item);
+    URL.revokeObjectURL(item.url);
   }
 }
 
-async function takePicture() {
-  if (!video.value) return;
+function createDummySessionFile(blob: Blob, pageNo: number): SessionFile {
+  const selectedStudent = markingStore.currentSession?.selectedStudent ?? 1;
+  return {
+    id: crypto.randomUUID(),
+    url: URL.createObjectURL(blob),
+    name: `student-${selectedStudent}-page-${pageNo}.jpg`,
+    storageUrl: `/mock-storage/${markingStore.currentSession?.id}/student-${selectedStudent}-page-${pageNo}.jpg`,
+    size: blob.size,
+    uploadedAt: new Date().toISOString()
+  };
+}
 
-  const canvas = document.createElement('canvas');
-  canvas.width = video.value.videoWidth;
-  canvas.height = video.value.videoHeight;
+async function nextStudent() {
+  if (!markingStore.currentSession) return;
+  if (switchingStudent.value) return;
+  switchingStudent.value = true;
 
-  const ctx = canvas.getContext('2d');
-  ctx?.drawImage(video.value, 0, 0);
+  await new Promise((resolve) => setTimeout(resolve, 1000)); // simulate processing/uploading time
 
-  const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.9));
+  const now = new Date().toISOString();
 
-  const compressed = await imageCompression(blob, {
-    maxSizeMB: 1,
-    maxWidthOrHeight: 2000
-  });
+  const submission: StudentSubmission = {
+    id: crypto.randomUUID(),
+    sessionId: markingStore.currentSession.id || '',
+    studentNo: markingStore.currentSession?.selectedStudent ?? 1,
+    pages: items.value.map((item, index) => ({
+      pageNo: index + 1,
+      file: createDummySessionFile(item.blob, index + 1)
+    })),
+    createdAt: now,
+    updatedAt: now
+  };
 
-  const url = URL.createObjectURL(compressed);
+  markingStore.addStudentSubmission(submission);
 
-  items.value.unshift(url);
+  // cleanup URLs
+  items.value.forEach((item) => URL.revokeObjectURL(item.url));
+  items.value = [];
+
+  if (isLastStudent.value) {
+    markingStore.currentSession.studentsAmount++;
+  }
+
+  markingStore.incrementSelectedStudent();
+  switchingStudent.value = false;
+}
+
+async function finishMarking() {
+  if (items.value.length > 0) {
+    const instance = confirmationModal.open({
+      title: 'Are you sure?',
+      description: 'You have not submitted all students work, are you sure you want to finish marking?'
+    });
+    const shouldContinue = await instance.result;
+
+    if (!shouldContinue) {
+      return;
+    }
+  }
+
+  router.push('/dashboard/marking');
 }
 
 definePageMeta({

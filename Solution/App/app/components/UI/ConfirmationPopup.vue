@@ -1,23 +1,52 @@
 <template>
-  <UModal :close="{ onClick: () => emit('close', false) }" title="Are you sure?">
+  <UModal :title="title" :close="{ onClick: () => emit('close', false) }">
     <template #body>
-      <p>{{ description }}</p>
+      <div class="flex flex-col gap-4">
+        <img v-if="image" :src="image" class="max-h-64 w-full object-cover rounded-lg border border-default" />
+
+        <p v-if="description">{{ description }}</p>
+      </div>
     </template>
+
     <template #footer>
-      <div class="flex gap-2">
-        <UButton color="primary" label="Cancel" size="xl" @click="emit('close', false)" />
-        <UButton color="secondary" variant="soft" label="Confirm" size="xl" @click="emit('close', true)" />
+      <div class="flex gap-2 justify-end">
+        <UButton
+          v-if="cancelButton !== null"
+          color="neutral"
+          :label="cancelButton"
+          size="xl"
+          @click="emit('close', false)"
+        />
+        <UButton
+          v-if="confirmButton !== null"
+          color="primary"
+          variant="soft"
+          :label="confirmButton"
+          size="xl"
+          @click="emit('close', true)"
+        />
       </div>
     </template>
   </UModal>
 </template>
 
 <script lang="ts" setup>
-defineProps<{
-  description: string;
+withDefaults(
+  defineProps<{
+    title?: string;
+    description?: string;
+    image?: string;
+    cancelButton?: string;
+    confirmButton?: string;
+  }>(),
+  {
+    title: 'Are you sure?',
+    cancelButton: 'Cancel',
+    confirmButton: 'Confirm'
+  }
+);
+
+const emit = defineEmits<{
+  close: [boolean];
 }>();
-
-const emit = defineEmits<{ close: [boolean] }>();
 </script>
-
-<style></style>

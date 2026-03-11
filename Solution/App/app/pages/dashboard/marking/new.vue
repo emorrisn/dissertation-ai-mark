@@ -34,6 +34,13 @@
           <p class="text-gray-500 dark:text-gray-400">
             Please review your session details and marking schemes before starting the session.
           </p>
+          <UAlert
+            class="text-left"
+            icon="i-lucide-lightbulb"
+            title="Pro Tip"
+            variant="soft"
+            description="Make sure you have good lighting and keep a mental note of the order you scan work in."
+          />
           <UButton to="/dashboard/marking/record" label="Begin Session" icon="i-lucide-play" size="lg" />
         </div>
       </div>
@@ -44,7 +51,15 @@
       <div class="flex justify-start p-4 gap-3 border-t border-default">
         <UButton color="primary" size="lg" @click="openMarkSchemeModal"> Add Marking Scheme </UButton>
 
-        <UButton color="primary" size="lg" variant="outline" @click="currentStep++"> Continue </UButton>
+        <UButton
+          color="primary"
+          size="lg"
+          variant="outline"
+          :disabled="markingStore.currentSession?.markshemes.length === 0"
+          @click="currentStep++"
+        >
+          Continue
+        </UButton>
       </div>
     </template>
   </UDashboardPanel>

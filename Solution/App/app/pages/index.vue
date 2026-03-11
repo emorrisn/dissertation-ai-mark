@@ -6,13 +6,6 @@ const value = ref<{ label: string; value: string } | undefined>(undefined);
 const authStore = useAuthStore();
 const institutes: ComputedRef<Institute[]> = computed(() => authStore.institutes);
 
-async function fetchInstitutes() {
-  await authStore.fetchInstitutes();
-}
-onMounted(() => {
-  fetchInstitutes();
-});
-
 function login() {
   if (value.value) {
     useRouter().push({

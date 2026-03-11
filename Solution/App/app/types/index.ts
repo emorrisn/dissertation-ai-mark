@@ -1,6 +1,8 @@
 export interface UserProfile {
-  userId: string;
+  id: string;
   username: string;
+  email: string;
+  writingStyle?: string;
   name: string;
   instituteCode: string;
   createdAt: string;
@@ -10,6 +12,7 @@ export interface UserProfile {
 export interface Institute {
   code: string;
   name: string;
+  api_url: string;
 }
 
 export interface Credentials {
@@ -24,7 +27,7 @@ export type PasswordUpdate = any;
 // Marking Sessions
 
 export interface MarkingFeedback {
-  feedbackId: string;
+  id: string;
   sessionId: string;
   studentNo: number;
   type: string;
@@ -70,9 +73,10 @@ export interface MarkScheme {
 }
 
 export interface MarkingSession {
-  sessionId: string | null;
+  id: string | null;
   year: number;
   studentsAmount: number;
+  selectedStudent: number;
   requiredOutputs: string[];
   notes: string;
   status: 'pending' | 'processing' | 'completed' | 'error';
@@ -84,9 +88,9 @@ export interface MarkingSession {
 
 // ^ Marking Sessions
 
-export interface AppUpdate {
+export interface UserUpdate {
   id: string;
-  type: 'MarkingSessionUpdate' | 'NewFeature' | 'SystemMessage';
+  type: 'MarkingSessionUpdate' | 'NewFeature' | 'SystemMessage' | 'SecurityUpdate';
   title: string;
   message: string;
   timestamp: string;
