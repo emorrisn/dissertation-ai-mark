@@ -41,7 +41,7 @@
             variant="soft"
             description="Make sure you have good lighting and keep a mental note of the order you scan work in."
           />
-          <UButton to="/dashboard/marking/record" label="Begin Session" icon="i-lucide-play" size="lg" />
+          <UButton label="Begin Session" icon="i-lucide-play" size="lg" :loading="loading" @click="beginSession" />
         </div>
       </div>
     </template>
@@ -67,12 +67,21 @@
 
 <script lang="ts" setup>
 import type { StepperItem } from '@nuxt/ui';
-import AddMarkSchemeModal from '~/components/Session/AddMarkSchemeModal.vue';
+import { SessionAddMarkSchemeModal } from '#components';
 
 const currentStep = ref(0);
 const markingStore = useMarkingStore();
 const overlay = useOverlay();
-const addMarkschemeModal = overlay.create(AddMarkSchemeModal);
+const addMarkschemeModal = overlay.create(SessionAddMarkSchemeModal);
+const loading = ref<boolean>(false);
+const router = useRouter();
+const toast = useToast();
+
+onMounted(async () => {
+  if (!markingStore.currentSession || currentStep.value == 0) {
+    markingStore.initializeNewSession();
+  }
+});
 
 const items = ref<StepperItem[]>([
   {
@@ -93,16 +102,29 @@ async function openMarkSchemeModal() {
   addMarkschemeModal.open();
 }
 
-onMounted(async () => {
-  if (!markingStore.currentSession) {
-    markingStore.initializeNewSession();
-  }
-});
+async function beginSession() {
+  loading.value = true;
 
-const router = useRouter();
+  try {
+    const session = await markingStore.createSession();
+
+    if (session) {
+      router.push(`/dashboard/marking/record`);
+    } else {
+      toast.add({
+        title: 'Session Creation Failed',
+        description: 'An unexpected error occurred.',
+        color: 'error'
+      });
+    }
+  } finally {
+    loading.value = false;
+  }
+}
 
 function handleBack() {
   if (currentStep.value === 0) {
+    markingStore.currentSession = null;
     router.push('/dashboard/marking');
   } else {
     currentStep.value--;

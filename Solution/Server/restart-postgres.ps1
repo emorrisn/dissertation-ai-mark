@@ -1,3 +1,10 @@
+# Check for administrative privileges and re-launch if necessary
+if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Warning "This script requires administrative privileges. Attempting to re-launch as an administrator..."
+    Start-Process powershell -Verb runAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    exit
+}
+
 $serviceName = "postgresql-x64-18"
 
 Write-Host "Restarting PostgreSQL service: $serviceName"

@@ -7,7 +7,11 @@ class MarkScheme(db.Model):
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
 
-    session_id = db.Column(db.String(36), db.ForeignKey("marking_sessions.id"), nullable=False)
+    session_id = db.Column(
+        db.String(36),
+        db.ForeignKey("marking_sessions.id"),
+        nullable=False
+    )
 
     file_id = db.Column(db.String(36), db.ForeignKey("session_files.id"))
     file = db.relationship("SessionFile")
@@ -20,7 +24,7 @@ class MarkScheme(db.Model):
     def to_dict(self):
         return {
             "id": self.id,
-            "id": self.session_id,
+            "sessionId": self.session_id,
             "file": self.file.to_dict() if self.file else None,
             "contents": self.contents,
             "createdAt": self.created_at.isoformat(),

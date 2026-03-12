@@ -1,9 +1,13 @@
-// plugins/api.ts
 import { defineNuxtPlugin } from '#app';
+import type { FetchOptions } from 'ofetch';
 
-export default defineNuxtPlugin((nuxtApp) => {
+interface CustomFetchOptions extends FetchOptions {
+  _retry?: boolean;
+}
+
+export default defineNuxtPlugin(() => {
   const api = $fetch.create({
-    onRequest({ request, options }) {
+    onRequest({ options }) {
       const authStore = useAuthStore();
 
       if (authStore.activeApiUrl) {
@@ -24,7 +28,7 @@ export default defineNuxtPlugin((nuxtApp) => {
 
     async onResponseError({ request, response, options }) {
       const authStore = useAuthStore();
-      const fetchOptions = options as any;
+      const fetchOptions = options as CustomFetchOptions;
       const hasRetried = fetchOptions._retry;
 
       if (response.status === 401 && !request.toString().includes('/auth/refresh') && !hasRetried) {
@@ -42,8 +46,9 @@ export default defineNuxtPlugin((nuxtApp) => {
           }
 
           return $fetch(request, options);
-        } catch (error: any) {
+        } catch (error: unknown) {
           authStore.logout();
+          throw error;
         }
       }
     }

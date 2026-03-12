@@ -3,3 +3,7 @@ from .marking_session import MarkingSession
 from .user_session import UserSession
 from .session_file import SessionFile
 from .mark_scheme import MarkScheme
+from .submission_page import SubmissionPage
+from .student_submission import StudentSubmission
+from .marking_feedback import MarkingFeedback
+from .user_update import UserUpdate

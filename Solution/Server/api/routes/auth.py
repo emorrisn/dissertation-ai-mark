@@ -10,8 +10,7 @@ from flask_jwt_extended import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from api.extensions import db
-from api.models.user import User
-from api.models.user_session import UserSession
+from api.models import UserSession, User
 from flask import current_app, request as flask_request
 import hashlib
 

@@ -27,15 +27,15 @@
         class="w-full h-full max-w-5xl mx-auto border-l border-r border-default"
       >
         <UPageCard
-          :title="`Marking Session - ${new Date(session.createdAt).toLocaleDateString('en-GB')}`"
-          :to="`/dashboard/marking/${session.id}`"
+          :title="`Year ${session.year} - ${new Date(session.createdAt).toLocaleDateString('en-GB')}`"
           :badge="{
             label: session.status,
             color: session.status === 'completed' ? 'green' : session.status === 'processing' ? 'orange' : 'gray',
             variant: 'subtle'
           }"
           :variant="index % 2 === 0 ? 'soft' : 'outline'"
-          class="rounded-none"
+          class="rounded-none cursor-pointer"
+          @click="onMarkingSessionClick(session)"
         >
           <template #description>
             <p class="text-sm text-gray-500 dark:text-gray-400">
@@ -52,7 +52,7 @@
               </div>
               <div class="flex items-center gap-1.5">
                 <UIcon name="i-lucide-clock" class="w-4 h-4" />
-                <span>Updated: {{ new Date(session.updatedAt).toLocaleDateString('en-GB') }}</span>
+                <span>Status: {{ getStatusText(session.status) }}</span>
               </div>
             </div>
           </template>
@@ -87,15 +87,83 @@
 <script lang="ts" setup>
 import { useMarkingStore } from '~/stores/marking';
 import { storeToRefs } from 'pinia';
+import type { MarkingSession } from '~/types';
+import { LazyUIConfirmationPopup } from '#components';
 
+const overlay = useOverlay();
 const markingStore = useMarkingStore();
 const { sessions } = storeToRefs(markingStore);
+const router = useRouter();
+const infoModal = overlay.create(LazyUIConfirmationPopup);
 
 onMounted(() => {
   if (!markingStore.sessions.length) {
     refresh();
   }
 });
+
+async function onMarkingSessionClick(session: MarkingSession) {
+  markingStore.currentSession = session;
+
+  switch (session.status) {
+    case 'ready': {
+      const canContinue = await infoModal.open({
+        title: 'Are you sure you want to continue?',
+        description: 'You will continue the session from where it was last left off from.'
+      });
+
+      if (!canContinue) {
+        return;
+      }
+
+      router.push(`/dashboard/marking/record`);
+      return;
+    }
+    case 'completed':
+      alert('TODO -> send to view pages');
+      return;
+    case 'error':
+      await infoModal.open({
+        title: 'Session',
+        description: 'It appears there was an error with your session. Please contact the admin for support.',
+        actionsEnabled: false
+      });
+      return;
+    case 'pending':
+      await infoModal.open({
+        title: 'Session',
+        description: 'Your session is currently in a queue. Please allow some time for it to begin processing.',
+        actionsEnabled: false
+      });
+      return;
+    case 'processing':
+      await infoModal.open({
+        title: 'Session',
+        description: 'Your session is currently processing, please allow some time for it to process.',
+        actionsEnabled: false
+      });
+      return 'Processing content';
+    default:
+      return;
+  }
+}
+
+function getStatusText(status: MarkingSession['status']) {
+  switch (status) {
+    case 'ready':
+      return 'Ready to start';
+    case 'completed':
+      return 'Ready to view';
+    case 'error':
+      return 'Something went wrong';
+    case 'pending':
+      return 'Waiting to process';
+    case 'processing':
+      return 'Processing content';
+    default:
+      return 'Loading';
+  }
+}
 
 async function refresh() {
   await markingStore.fetchSessions();

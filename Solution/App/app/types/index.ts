@@ -47,6 +47,7 @@ export interface SessionFile {
   deletedAt?: string;
   size: number;
   uploadedAt: string;
+  blob?: Blob;
 }
 
 export interface StudentSubmission {
@@ -79,7 +80,7 @@ export interface MarkingSession {
   selectedStudent: number;
   requiredOutputs: string[];
   notes: string;
-  status: 'pending' | 'processing' | 'completed' | 'error';
+  status: 'ready' | 'pending' | 'processing' | 'completed' | 'error';
   markshemes: MarkScheme[];
   studentSubmissions: StudentSubmission[];
   createdAt: string;

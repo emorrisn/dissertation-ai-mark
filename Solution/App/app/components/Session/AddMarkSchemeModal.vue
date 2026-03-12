@@ -47,10 +47,17 @@
           <UFileUpload
             v-model="state.file"
             class="w-full min-h-48"
-            label="Drop your mark scheme here"
-            description="PDF, PNG, DOCX, ETC (max. 2MB)"
+            layout="list"
+            label="
+              Drop your mark scheme here
+            "
+            description="PDF, PNG, DOCX, ETC (max. 10MB)"
             :limit="1"
             accept=".pdf, .docx, .png, .jpg"
+            :ui="{
+              base: state.file ? 'hidden' : '',
+              files: 'h-full'
+            }"
           />
           <div class="flex justify-start gap-3 pt-4">
             <UButton
@@ -109,8 +116,6 @@
 </template>
 
 <script setup lang="ts">
-// TODO: Make sure files save with proper ids
-
 import type { TabsItem, FormSubmitEvent } from '@nuxt/ui';
 import { z } from 'zod';
 import { storeToRefs } from 'pinia';
@@ -122,12 +127,34 @@ const emit = defineEmits<{ close: [boolean] }>();
 
 const cameraImage = ref<string | null>(null);
 const camera = ref<InstanceType<typeof SessionCamera> | null>(null);
+let cameraBlob: Blob | null = null;
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+const state = ref({
+  contents: '',
+  file: null as File | null
+});
 
 async function takeCameraPicture() {
   const photo = await camera.value?.takePhoto();
   if (!photo) return;
+
   cameraImage.value = photo.url;
+  cameraBlob = photo.blob;
 }
+
+watch(
+  () => state.value.file,
+  (file) => {
+    if (!file) return;
+
+    if (file.size > MAX_FILE_SIZE) {
+      alert('File must be smaller than 10MB');
+
+      state.value.file = null;
+    }
+  }
+);
 
 const items = [
   {
@@ -161,19 +188,20 @@ const schema = z.object({
 type Schema = z.output<typeof schema>;
 const fileUploading = ref(false);
 
-const state = ref({
-  contents: '',
-  file: null as File | null
-});
-
 function handleTextSubmit(event: FormSubmitEvent<Schema>) {
   if (!currentSession.value) return;
+
   markingStore.addMarkScheme({ contents: event.data.contents });
   resetAndClose();
 }
 
 async function handleFileSubmit() {
   if (!state.value.file || !currentSession.value) return;
+
+  if (state.value.file.size > MAX_FILE_SIZE) {
+    alert('File exceeds the 10MB limit');
+    return;
+  }
   fileUploading.value = true;
   try {
     // Simulate API call to upload the file
@@ -208,7 +236,7 @@ function retryCamera() {
 }
 
 function saveCameraImage() {
-  if (!cameraImage.value || !currentSession.value) return;
+  if (!cameraImage.value || !cameraBlob || !currentSession.value) return;
 
   const now = new Date().toISOString();
 
@@ -217,8 +245,9 @@ function saveCameraImage() {
     url: cameraImage.value,
     name: `markscheme-${Date.now()}.jpg`,
     storageUrl: '',
-    size: 0,
-    uploadedAt: now
+    size: cameraBlob.size,
+    uploadedAt: now,
+    blob: cameraBlob
   };
 
   markingStore.addMarkScheme({ file });

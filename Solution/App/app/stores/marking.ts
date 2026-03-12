@@ -30,37 +30,46 @@ export const useMarkingStore = defineStore('marking', {
       };
     },
 
-    async createSession() {
+    async createSession(): Promise<MarkingSession | undefined> {
       if (!this.currentSession) return;
 
+      const session = this.currentSession;
       const formData = new FormData();
 
-      formData.append('year', String(this.currentSession.year));
-      formData.append('studentsAmount', String(this.currentSession.studentsAmount));
-      formData.append('notes', this.currentSession.notes);
+      formData.append('year', String(session.year));
+      formData.append('studentsAmount', String(session.studentsAmount));
+      formData.append('notes', session.notes);
 
-      this.currentSession.requiredOutputs.forEach((o) => formData.append('requiredOutputs[]', o));
+      session.requiredOutputs.forEach((o) => formData.append('requiredOutputs[]', o));
 
-      this.currentSession.markshemes.forEach(async (scheme, i) => {
+      for (const [i, scheme] of session.markshemes.entries()) {
         if (scheme.contents) {
           formData.append(`markschemes[${i}][contents]`, scheme.contents);
         }
 
         if (scheme.file) {
-          const blob = await fetch(scheme.file.url).then((r) => r.blob());
+          if (scheme.file.blob) {
+            formData.append(`markschemes[${i}][file]`, scheme.file.blob, scheme.file.name);
+          } else {
+            // fallback for uploaded files
+            const blob = await fetch(scheme.file.url).then((r) => r.blob());
 
-          formData.append(`markschemes[${i}][file]`, blob, scheme.file.name);
+            formData.append(`markschemes[${i}][file]`, blob, scheme.file.name);
+          }
         }
-      });
+      }
 
-      const session = await $fetch('/api/marking', {
+      const { $api } = useNuxtApp();
+      const result: MarkingSession = await $api('/marking/start', {
         method: 'POST',
         body: formData
       });
 
-      this.currentSession = session;
+      this.currentSession.id = result.id;
 
-      return session;
+      window.dispatchEvent(new Event('session-updated'));
+
+      return result;
     },
 
     incrementSelectedStudent() {
@@ -89,65 +98,82 @@ export const useMarkingStore = defineStore('marking', {
       this.currentSession.markshemes.push(newMarkScheme);
     },
 
+    async addStudentSubmission(sessionId: string, studentNo: number, files: Blob[]) {
+      this.status = 'loading';
+
+      const formData = new FormData();
+      // Append the session ID to the form data here
+      formData.append('sessionId', sessionId);
+      formData.append('studentNo', String(studentNo));
+
+      // Append each file to the form data
+      files.forEach((blob, index) => {
+        formData.append(`pages[${index}]`, blob, `page_${index + 1}.jpg`);
+      });
+
+      try {
+        const { $api } = useNuxtApp();
+
+        // Pointing to the new route without the ID in the URL
+        const response: any = await $api('/marking/submission', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (this.currentSession) {
+          // Update the session's current student based on backend source of truth
+          this.currentSession.selectedStudent = response.nextStudent;
+
+          // Expand the max students amount if we bypassed it
+          if (response.nextStudent > this.currentSession.studentsAmount) {
+            this.currentSession.studentsAmount = response.nextStudent;
+          }
+
+          // Update or push the new submission into the local state
+          const existingIndex = this.currentSession.studentSubmissions.findIndex((s) => s.studentNo === studentNo);
+
+          if (existingIndex !== -1) {
+            this.currentSession.studentSubmissions[existingIndex] = response.submission;
+          } else {
+            this.currentSession.studentSubmissions.push(response.submission);
+          }
+        }
+
+        this.status = 'succeeded';
+        window.dispatchEvent(new Event('session-updated'));
+        return response;
+      } catch (error) {
+        this.status = 'failed';
+        console.error('Failed to submit student work:', error);
+        throw error;
+      }
+    },
+
     removeMarkScheme(id: string) {
       if (!this.currentSession) return;
       const index = this.currentSession.markshemes.findIndex((scheme) => scheme.id === id);
       if (index !== -1) this.currentSession.markshemes.splice(index, 1);
     },
 
-    addStudentSubmission(submission: StudentSubmission) {
-      if (!this.currentSession) return;
-
-      const existingIndex = this.currentSession.studentSubmissions.findIndex(
-        (s) => s.studentNo === submission.studentNo
-      );
-
-      if (existingIndex !== -1) {
-        this.currentSession.studentSubmissions[existingIndex] = submission;
-      } else {
-        this.currentSession.studentSubmissions.push(submission);
-      }
-    },
-
     async fetchSessions() {
       this.status = 'loading';
+
       try {
-        // API call to get all marking sessions for the user
-        // const sessions = await $fetch('/api/marking-sessions');
-        // this.sessions = sessions;
+        const { $api } = useNuxtApp();
 
-        await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate network delay
+        const sessions: MarkingSession[] = await $api('/marking/sessions', {
+          method: 'GET'
+        });
 
-        // Mock data for now
-        const mockSessions: MarkingSession[] = [
-          {
-            id: 'session-1',
-            year: 2024,
-            studentsAmount: 28,
-            selectedStudent: 28,
-            requiredOutputs: ['exam_paper'],
-            notes: 'Year 11 History GCSE Mock Papers. Focus on source analysis.',
-            status: 'completed',
-            createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10).toISOString(), // 10 days ago
-            updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(), // 3 days ago
-            markshemes: [],
-            studentSubmissions: []
-          },
-          {
-            id: 'session-2',
-            year: 2024,
-            studentsAmount: 22,
-            selectedStudent: 28,
-            requiredOutputs: ['coursework', 'report'],
-            notes: 'Year 13 A-Level Computer Science coursework submissions.',
-            status: 'processing',
-            createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2).toISOString(), // 2 days ago
-            updatedAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(), // 45 minutes ago
-            markshemes: [],
-            studentSubmissions: []
-          }
-        ];
-        this.sessions = mockSessions.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        // ensure arrays exist
+        this.sessions = sessions
+          .map((s) => ({
+            ...s,
+            markshemes: s.markshemes ?? [],
+            studentSubmissions: s.studentSubmissions ?? []
+          }))
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
         this.status = 'succeeded';
       } catch (error) {
         this.status = 'failed';
@@ -155,14 +181,37 @@ export const useMarkingStore = defineStore('marking', {
       }
     },
 
-    async fetchSession(id: string) {
-      // API call to get a single session's details, including results
-      // const session = await $fetch(`/api/marking-sessions/${id}`);
-      // this.currentSession = session;
-    },
+    async finishSession(sessionId: string) {
+      this.status = 'loading';
 
-    async checkSessionStatus(id: string) {
-      // Action to poll the API for the status of a processing job.
+      try {
+        const { $api } = useNuxtApp();
+        const response: any = await $api('/marking/finish', {
+          method: 'POST',
+          body: { sessionId } // Sending as JSON payload
+        });
+
+        // Update the current session status locally
+        if (this.currentSession && this.currentSession.id === sessionId) {
+          this.currentSession.status = 'pending';
+          this.currentSession.updatedAt = response.session.updatedAt;
+        }
+
+        // Also update it in the sessions list if it's there
+        const sessionInList = this.sessions.find((s) => s.id === sessionId);
+        if (sessionInList) {
+          sessionInList.status = 'pending';
+        }
+
+        this.status = 'succeeded';
+        window.dispatchEvent(new Event('session-updated'));
+
+        return response;
+      } catch (error) {
+        this.status = 'failed';
+        console.error('Failed to finish marking session:', error);
+        throw error;
+      }
     }
   }
 });

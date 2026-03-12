@@ -11,11 +11,16 @@ class SubmissionPage(db.Model):
 
     page_no = db.Column(db.Integer)
 
-    file_id = db.Column(db.String(36), db.ForeignKey("session_files.id"))
+    file_id = db.Column(
+        db.String(36), 
+        db.ForeignKey("session_files.id", ondelete="CASCADE"),
+        nullable=False 
+    )
     file = db.relationship("SessionFile")
 
     def to_dict(self):
         return {
+            "id": self.id,
             "pageNo": self.page_no,
             "file": self.file.to_dict() if self.file else None
         }

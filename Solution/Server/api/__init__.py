@@ -3,7 +3,7 @@ from api.config import Config
 from api.extensions import db, migrate, jwt
 from api.routes import *
 from flask_cors import CORS
-from api.commands import fresh, seed
+from api.commands import fresh, seed, clear_uploads
 
 def create_app():
     app = Flask(__name__)
@@ -19,6 +19,7 @@ def create_app():
 
     app.cli.add_command(fresh)
     app.cli.add_command(seed)
+    app.cli.add_command(clear_uploads)
 
     allowed_origins = [
         "http://localhost:3000",  

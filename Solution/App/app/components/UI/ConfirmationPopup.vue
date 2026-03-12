@@ -8,7 +8,7 @@
       </div>
     </template>
 
-    <template #footer>
+    <template v-if="actionsEnabled" #footer>
       <div class="flex gap-2 justify-end">
         <UButton
           v-if="cancelButton !== null"
@@ -38,11 +38,13 @@ withDefaults(
     image?: string;
     cancelButton?: string;
     confirmButton?: string;
+    actionsEnabled?: boolean;
   }>(),
   {
     title: 'Are you sure?',
     cancelButton: 'Cancel',
-    confirmButton: 'Confirm'
+    confirmButton: 'Confirm',
+    actionsEnabled: true
   }
 );
 

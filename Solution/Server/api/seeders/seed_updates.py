@@ -23,24 +23,15 @@ def seed_updates():
         updates.extend([
             UserUpdate(
                 user_id=user.id,
-                type="MarkingSessionUpdate",
-                title="Marking Complete",
-                message="Your marking session 'History Essay Batch 1' has been completed.",
-                link="/dashboard/marking/session-123",
-                related_id="session-123"
-            ),
-            UserUpdate(
-                user_id=user.id,
                 type="NewFeature",
-                title="New Feature: Bulk Export",
-                message="You can now export marking results as a CSV file.",
-                link="/dashboard/features"
+                title="Welcome to the system",
+                message="Thank you for using our system!",
             ),
             UserUpdate(
                 user_id=user.id,
                 type="SystemMessage",
-                title="Scheduled Maintenance",
-                message="The system will be down for maintenance on Sunday at 2 AM."
+                title="Feedback",
+                message="Please give as much feedback as you can!"
             )
         ])
 

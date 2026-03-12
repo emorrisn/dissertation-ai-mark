@@ -9,22 +9,32 @@
     </template>
     <template #body>
       <div class="max-w-5xl mx-auto h-full flex flex-col gap-4">
-        <SessionCamera ref="camera" />
+        <SessionCamera ref="camera" class="grow flex-1" />
 
-        <UCarousel v-slot="{ item, index }" dots :items="items" :ui="{ item: 'basis-1/3' }">
-          <div class="relative">
-            <img
-              :src="item.url"
-              class="rounded-lg hover:opacity-75 transition cursor-pointer object-cover w-full"
-              loading="lazy"
-              @click="removeImage(item, index)"
-            />
+        <div class="shrink-0 w-full mb-2">
+          <UCarousel v-slot="{ item, index }" dots :items="items" :ui="{ item: 'basis-1/3 px-2' }">
+            <div class="relative w-full aspect-[4/3] rounded-lg overflow-hidden">
+              <template v-if="!item.isPlaceholder">
+                <img
+                  :src="item.url"
+                  class="object-cover w-full h-full hover:opacity-75 transition cursor-pointer"
+                  loading="lazy"
+                  @click="removeImage(item, index)"
+                />
+                <div class="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded-md">
+                  Page {{ realItems.length - index }}
+                </div>
+              </template>
 
-            <div class="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded-md">
-              Page {{ items.length - index }}
+              <div
+                v-else
+                class="w-full h-full flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-500/50 bg-gray-500/10"
+              >
+                <UIcon name="i-lucide-camera" class="w-6 h-6 opacity-50" />
+              </div>
             </div>
-          </div>
-        </UCarousel>
+          </UCarousel>
+        </div>
       </div>
     </template>
     <template #footer>
@@ -57,7 +67,7 @@
 <script lang="ts" setup>
 import { ref, onMounted, computed } from 'vue';
 import { LazyUIConfirmationPopup, SessionCamera } from '#components';
-import type { SessionFile, StudentSubmission } from '~/types';
+import { onBeforeRouteLeave } from 'vue-router';
 
 const router = useRouter();
 const overlay = useOverlay();
@@ -66,7 +76,20 @@ const markingStore = useMarkingStore();
 
 const confirmationModal = overlay.create(LazyUIConfirmationPopup);
 
-const items = ref<{ url: string; blob: Blob }[]>([]);
+type CameraItem = {
+  url?: string;
+  blob?: Blob;
+  isPlaceholder?: boolean;
+  id: string;
+};
+
+const items = ref<CameraItem[]>([
+  { isPlaceholder: true, id: 'ph-1' },
+  { isPlaceholder: true, id: 'ph-2' },
+  { isPlaceholder: true, id: 'ph-3' }
+]);
+
+const realItems = computed(() => items.value.filter((i) => !i.isPlaceholder));
 
 const switchingStudent = ref(false);
 const takingPhoto = ref(false);
@@ -87,79 +110,123 @@ onMounted(async () => {
   }
 });
 
+onBeforeRouteLeave(async () => {
+  // If there are no unsaved images, allow the route change
+  if (items.value.length === 0) return true;
+  if (markingStore.currentSession?.status == 'pending') {
+    markingStore.currentSession = null;
+    return true;
+  }
+
+  // Otherwise, prompt the user
+  const instance = confirmationModal.open({
+    title: 'Unsaved Progress',
+    description: 'You have unsaved photos for the current student. Are you sure you want to leave and discard them?'
+  });
+
+  const shouldLeave = await instance.result;
+
+  // If they click confirm, allow navigation. If cancel, block navigation.
+  return shouldLeave;
+});
+
 const camera = ref<InstanceType<typeof SessionCamera> | null>(null);
 
 async function takePicture() {
   const photo = await camera.value?.takePhoto();
   if (!photo) return;
-  items.value.unshift(photo);
+
+  // Create the new real item
+  const newItem: CameraItem = {
+    url: photo.url,
+    blob: photo.blob,
+    id: crypto.randomUUID()
+  };
+
+  // If there are placeholders, remove the last one so the array stays at a minimum of 3
+  const placeholderIndex = items.value.findLastIndex((i) => i.isPlaceholder);
+  if (placeholderIndex !== -1) {
+    items.value.splice(placeholderIndex, 1);
+  }
+
+  // Add the new photo to the front
+  items.value.unshift(newItem);
 }
 
-async function removeImage(item: { url: string }, index: number) {
+async function removeImage(item: CameraItem, index: number) {
   const instance = confirmationModal.open({
-    title: `Delete page #${items.value.length - index}?`,
+    title: `Delete this page?`,
     image: item.url
   });
   const shouldDelete = await instance.result;
 
   if (shouldDelete) {
-    items.value = items.value.filter((i) => i !== item);
-    URL.revokeObjectURL(item.url);
-  }
-}
+    // Remove the item
+    items.value = items.value.filter((i) => i.id !== item.id);
+    if (item.url) URL.revokeObjectURL(item.url);
 
-function createDummySessionFile(blob: Blob, pageNo: number): SessionFile {
-  const selectedStudent = markingStore.currentSession?.selectedStudent ?? 1;
-  return {
-    id: crypto.randomUUID(),
-    url: URL.createObjectURL(blob),
-    name: `student-${selectedStudent}-page-${pageNo}.jpg`,
-    storageUrl: `/mock-storage/${markingStore.currentSession?.id}/student-${selectedStudent}-page-${pageNo}.jpg`,
-    size: blob.size,
-    uploadedAt: new Date().toISOString()
-  };
+    // If we have fewer than 3 items, push a placeholder back in to maintain the layout
+    if (items.value.length < 3) {
+      items.value.push({ isPlaceholder: true, id: crypto.randomUUID() });
+    }
+  }
 }
 
 async function nextStudent() {
   if (!markingStore.currentSession) return;
   if (switchingStudent.value) return;
+
   switchingStudent.value = true;
 
-  await new Promise((resolve) => setTimeout(resolve, 1000)); // simulate processing/uploading time
+  const sessionId = markingStore.currentSession.id;
 
-  const now = new Date().toISOString();
-
-  const submission: StudentSubmission = {
-    id: crypto.randomUUID(),
-    sessionId: markingStore.currentSession.id || '',
-    studentNo: markingStore.currentSession?.selectedStudent ?? 1,
-    pages: items.value.map((item, index) => ({
-      pageNo: index + 1,
-      file: createDummySessionFile(item.blob, index + 1)
-    })),
-    createdAt: now,
-    updatedAt: now
-  };
-
-  markingStore.addStudentSubmission(submission);
-
-  // cleanup URLs
-  items.value.forEach((item) => URL.revokeObjectURL(item.url));
-  items.value = [];
-
-  if (isLastStudent.value) {
-    markingStore.currentSession.studentsAmount++;
+  if (!sessionId) {
+    return;
   }
 
-  markingStore.incrementSelectedStudent();
-  switchingStudent.value = false;
+  const currentStudentNo = markingStore.currentSession.selectedStudent ?? 1;
+
+  // Because takePicture uses unshift, the newest photo is at index 0.
+  // We reverse the array so the backend gets Page 1 first, Page 2 second, etc.
+  const orderedBlobs = [...items.value].reverse().map((item) => item.blob);
+
+  try {
+    // Send the data to the backend via the store action
+    await markingStore.addStudentSubmission(sessionId, currentStudentNo, orderedBlobs);
+
+    // If successful, cleanup URLs and clear the array
+    items.value.forEach((item) => URL.revokeObjectURL(item.url));
+    items.value = [];
+  } catch (error) {
+    toast.add({
+      title: 'Upload Failed',
+      description: 'Could not save student submission. Please try again.',
+      color: 'error'
+    });
+  } finally {
+    switchingStudent.value = false;
+  }
 }
 
 async function finishMarking() {
   if (items.value.length > 0) {
     const instance = confirmationModal.open({
       title: 'Are you sure?',
-      description: 'You have not submitted all students work, are you sure you want to finish marking?'
+      description:
+        'You have unsaved pages for the current student. Are you sure you want to finish marking and discard them?'
+    });
+    const shouldContinue = await instance.result;
+
+    if (!shouldContinue) {
+      return;
+    }
+  } else if (
+    markingStore.currentSession &&
+    markingStore.currentSession.selectedStudent < markingStore.currentSession.studentsAmount
+  ) {
+    const instance = confirmationModal.open({
+      title: 'Are you sure?',
+      description: 'You not marked all of your students for this session.'
     });
     const shouldContinue = await instance.result;
 
@@ -168,7 +235,39 @@ async function finishMarking() {
     }
   }
 
-  router.push('/dashboard/marking');
+  const instance = confirmationModal.open({
+    title: 'Are you finished?',
+    description:
+      'Setting this marking session as finished means you can no longer make changes or add students so only do this if you are sure.'
+  });
+  const shouldContinue = await instance.result;
+
+  if (!shouldContinue) {
+    return;
+  }
+
+  // Ensure we have a session to finish
+  if (!markingStore.currentSession?.id) return;
+
+  try {
+    // Call the backend to lock the session and change status to 'pending'
+    await markingStore.finishSession(markingStore.currentSession.id);
+
+    toast.add({
+      title: 'Session Submitted',
+      description: 'Your marking session has been queued for processing.',
+      color: 'success'
+    });
+
+    // Navigate away
+    router.push('/dashboard/marking');
+  } catch (error) {
+    toast.add({
+      title: 'Error',
+      description: 'Failed to complete the marking session. Please try again.',
+      color: 'error'
+    });
+  }
 }
 
 definePageMeta({

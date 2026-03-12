@@ -146,16 +146,17 @@ async function takePhoto(): Promise<{ url: string; blob: Blob } | null> {
   ctx?.drawImage(videoRef.value, 0, 0);
 
   const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.9));
+  const file = new File([blob], 'captured-photo.jpg', { type: 'image/jpeg' });
 
   triggerFlash();
 
-  const compressed = await imageCompression(blob, { maxSizeMB: 1, maxWidthOrHeight: 2000 });
+  const compressed = await imageCompression(file, { maxSizeMB: 1, maxWidthOrHeight: 2000 });
 
   const url = URL.createObjectURL(blob);
 
   return {
     url,
-    compressed
+    blob: compressed
   };
 }
 
