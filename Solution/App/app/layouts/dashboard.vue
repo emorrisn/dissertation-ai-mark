@@ -47,6 +47,22 @@ const items = computed<NavigationMenuItem[]>(() => [
     to: '/dashboard/settings'
   }
 ]);
+
+const actionItems = computed<NavigationMenuItem[]>(() => {
+  const pageActions = router.currentRoute.value.meta.sidebarActions as any[];
+
+  if (!pageActions || !Array.isArray(pageActions)) {
+    return [];
+  }
+
+  return pageActions.map((action) => ({
+    label: action.label,
+    icon: action.icon,
+    onSelect: () => {
+      window.dispatchEvent(new Event(action.event));
+    }
+  }));
+});
 </script>
 
 <template>
@@ -68,6 +84,8 @@ const items = computed<NavigationMenuItem[]>(() => [
 
             <template #default="{ collapsed }">
               <UNavigationMenu :collapsed="collapsed" :items="items" orientation="vertical" />
+
+              <UNavigationMenu :collapsed="collapsed" :items="actionItems" orientation="vertical" class="mt-auto" />
             </template>
 
             <template #footer="{ collapsed }">

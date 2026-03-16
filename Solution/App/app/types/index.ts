@@ -80,6 +80,7 @@ export interface MarkingSession {
   selectedStudent: number;
   requiredOutputs: string[];
   notes: string;
+  stage: 'Conversion Pending' | 'Conversion Processing' | 'Evaluation Pending' | 'Evaluation Processing' | 'Evaluated';
   status: 'ready' | 'pending' | 'processing' | 'completed' | 'error';
   markshemes: MarkScheme[];
   studentSubmissions: StudentSubmission[];

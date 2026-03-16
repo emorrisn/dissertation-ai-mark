@@ -60,6 +60,7 @@
           }}/{{ markingStore.currentSession?.studentsAmount ? markingStore.currentSession.studentsAmount - 1 : 1 }})
         </UButton>
       </div>
+      <input type="file" accept="image/*" class="hidden" ref="fileInput" @change="handleFileUpload" />
     </template>
   </UDashboardPanel>
 </template>
@@ -100,6 +101,9 @@ const isLastStudent = computed(() => {
 });
 
 onMounted(async () => {
+  window.addEventListener('keydown', handleKeydown);
+  window.addEventListener('trigger-upload-picture', triggerUpload);
+
   if (!markingStore.currentSession) {
     await router.push('/dashboard/marking');
     toast.add({
@@ -108,6 +112,11 @@ onMounted(async () => {
     });
     return;
   }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('trigger-upload-picture', triggerUpload);
+  window.removeEventListener('keydown', handleKeydown);
 });
 
 onBeforeRouteLeave(async () => {
@@ -153,10 +162,10 @@ async function takePicture() {
   items.value.unshift(newItem);
 }
 
-async function removeImage(item: CameraItem, index: number) {
+async function removeImage(item: CameraItem, _index: number) {
   const instance = confirmationModal.open({
     title: `Delete this page?`,
-    image: item.url
+    image: item.url ?? ''
   });
   const shouldDelete = await instance.result;
 
@@ -188,14 +197,17 @@ async function nextStudent() {
 
   // Because takePicture uses unshift, the newest photo is at index 0.
   // We reverse the array so the backend gets Page 1 first, Page 2 second, etc.
-  const orderedBlobs = [...items.value].reverse().map((item) => item.blob);
+  const orderedBlobs = [...items.value]
+    .filter((item) => item.blob)
+    .reverse()
+    .map((item) => item.blob as Blob);
 
   try {
     // Send the data to the backend via the store action
     await markingStore.addStudentSubmission(sessionId, currentStudentNo, orderedBlobs);
 
     // If successful, cleanup URLs and clear the array
-    items.value.forEach((item) => URL.revokeObjectURL(item.url));
+    items.value.forEach((item) => URL.revokeObjectURL(item.url!));
     items.value = [];
   } catch (error) {
     toast.add({
@@ -203,6 +215,7 @@ async function nextStudent() {
       description: 'Could not save student submission. Please try again.',
       color: 'error'
     });
+    console.error(error);
   } finally {
     switchingStudent.value = false;
   }
@@ -261,7 +274,7 @@ async function finishMarking() {
 
     // Navigate away
     router.push('/dashboard/marking');
-  } catch (error) {
+  } catch {
     toast.add({
       title: 'Error',
       description: 'Failed to complete the marking session. Please try again.',
@@ -270,9 +283,57 @@ async function finishMarking() {
   }
 }
 
+function triggerUpload() {
+  fileInput.value?.click();
+  toast.add({
+    title: 'Adding image...',
+    description: 'Please select an image to upload.'
+  });
+}
+
+const fileInput = ref<HTMLInputElement | null>(null);
+function handleKeydown(e: KeyboardEvent) {
+  // Trigger on 'Alt + U'. Change 'u' or the modifier key if you prefer a different shortcut.
+  if (e.altKey && e.key.toLowerCase() === 'u') {
+    e.preventDefault();
+    triggerUpload();
+  }
+}
+
+async function handleFileUpload(event: Event) {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (!file) return;
+
+  // Reset the input so the exact same file can be selected again if needed
+  target.value = '';
+
+  // Create the new real item (A File is a subclass of Blob, so it's perfectly compatible)
+  const newItem: CameraItem = {
+    url: URL.createObjectURL(file),
+    blob: file,
+    id: crypto.randomUUID()
+  };
+
+  // Reusing the same placement logic from takePicture
+  const placeholderIndex = items.value.findLastIndex((i) => i.isPlaceholder);
+  if (placeholderIndex !== -1) {
+    items.value.splice(placeholderIndex, 1);
+  }
+
+  items.value.unshift(newItem);
+}
+
 definePageMeta({
   layout: 'dashboard',
-  middleware: ['auth']
+  middleware: ['auth'],
+  sidebarActions: [
+    {
+      label: 'Upload Picture',
+      icon: 'i-lucide-upload',
+      event: 'trigger-upload-picture'
+    }
+  ]
 });
 </script>
 

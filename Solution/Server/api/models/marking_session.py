@@ -21,6 +21,11 @@ class MarkingSession(db.Model):
     required_outputs = db.Column(db.JSON, nullable=True)
     notes = db.Column(db.Text, nullable=True)
 
+    stage = db.Column(
+        db.String(32),
+        default="Conversion Pending"
+    )
+
     status = db.Column(
         db.String(20),
         default="pending"
