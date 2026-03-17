@@ -14,133 +14,170 @@ from sqlalchemy.orm import selectinload
 from api.models import MarkingSession, MarkScheme, StudentSubmission, SubmissionPage 
 
 from convert import Converter
+import logging
 
 # The Shared Baton
 LOCK_PATH = os.path.join(server_dir, "worker_processing.lock")
 lock = FileLock(LOCK_PATH, timeout=0)
+logging.basicConfig(
+    level=logging.INFO, 
+    format='[%(levelname)s] [%(asctime)s] %(message)s', 
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+logger = logging.getLogger(__name__)
+
+
+def recover_stale_sessions():
+    """Finds sessions that crashed mid-conversion and resets them."""
+    timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=30)
+    stale_sessions = MarkingSession.query.filter(
+        MarkingSession.stage == "Conversion Processing",
+        MarkingSession.status.in_(["processing", "error"]),
+        MarkingSession.updated_at < timeout_threshold
+    ).all()
+
+    if stale_sessions:
+        logger.info(f"Found {len(stale_sessions)} crashed sessions. Reverting to Pending...")
+        for session in stale_sessions:
+            session.stage = "Conversion Pending"
+            session.status = "pending"
+        db.session.commit()
+
+def fetch_pending_sessions():
+    """Fetches and locks the top 3 sessions that are ready for conversion."""
+    top_sessions = MarkingSession.query \
+        .options(
+            selectinload(MarkingSession.markschemes).selectinload(MarkScheme.file),
+            selectinload(MarkingSession.student_submissions)
+            .selectinload(StudentSubmission.pages)
+            .selectinload(SubmissionPage.file)
+        ) \
+        .filter(
+            MarkingSession.stage != "Evaluated",
+            MarkingSession.status == "pending"
+        ) \
+        .order_by(MarkingSession.created_at.asc()) \
+        .limit(3) \
+        .all()
+        
+    return [s for s in top_sessions if s.stage == "Conversion Pending"]
+
+
+def process_markschemes(session, converter):
+    """Converts markschemes to text"""
+    all_converted = True
+    for ms in session.markschemes:
+        if ms.contents and ms.contents.strip():
+            logger.info(f"Skipping Markscheme {ms.id}")
+            continue
+
+        if ms.file and getattr(ms.file, 'storage_url', None):
+            logger.info(f"Converting Markscheme: {ms.id}")
+            text = converter.convert(ms.file.storage_url)
+
+            if text:
+                ms.contents = text
+                db.session.commit()
+            else:
+                all_converted = False
+        else:
+            all_converted = False
+            
+    return all_converted
+
+def process_student_submissions(session, converter):
+    """Converts and stitches student submission pages."""
+    all_converted = True
+    for submission in session.student_submissions:
+        if submission.contents and submission.contents.strip():
+            logger.info(f"Skipping Student {submission.student_no}")
+            continue
+
+        logger.info(f"Processing Student No: {submission.student_no}")
+        
+        submission_texts = []
+        sorted_pages = sorted(submission.pages, key=lambda p: getattr(p, 'page_no', 0))
+        
+        current_submission_success = True
+        for page in sorted_pages:
+            if page.file and getattr(page.file, 'storage_url', None):
+                logger.info(f"Converting Page {getattr(page, 'page_no', '?')}")
+                page_text = converter.convert(page.file.storage_url)
+                
+                if page_text:
+                    submission_texts.append(page_text)
+                else:
+                    current_submission_success = False
+            else:
+                current_submission_success = False
+        
+        # Stitch all pages together with a double newline
+        if current_submission_success and submission_texts:
+            submission.contents = "\n\n".join(submission_texts)
+            db.session.commit()
+        else:
+            all_converted = False
+            
+    return all_converted
 
 def run_worker():
-    print("Initializing Conversion Worker...")
+    logger.info("Initializing Conversion Worker...")
     app = create_app()
     converter = Converter(server_dir)
 
     with app.app_context():
-        print("Worker successfully connected to the database. Starting polling loop...")
-        
+        logger.info("Worker successfully connected to the database. Starting polling loop...")
+
+        is_waiting_logged = False
         while True:
             try:
-                # Zombie Sweeper (Crash Recovery)
-                timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=30)
-                
-                stale_sessions = MarkingSession.query.filter(
-                    MarkingSession.stage == "Conversion Processing",
-                    MarkingSession.updated_at < timeout_threshold
-                ).all()
-
-                if stale_sessions:
-                    print(f"\nFound {len(stale_sessions)} crashed sessions. Reverting to Pending...")
-                    for session in stale_sessions:
-                        session.stage = "Conversion Pending"
-                    db.session.commit()
+                recover_stale_sessions()
 
                 # Database Check (Fast-Fail)
                 if MarkingSession.query.filter_by(stage="Evaluation Processing").first():
-                    print("Evaluation in progress (DB check). Pausing Conversion...", end="\n")
+                    logger.info("Evaluation in progress (DB check). Pausing Conversion...")
                     time.sleep(5)
                     continue
 
                 # Atomic File Lock (Race Condition Prevention)
                 with lock:    
-                    top_sessions = MarkingSession.query \
-                        .options(
-                            selectinload(MarkingSession.markschemes).selectinload(MarkScheme.file),
-                            selectinload(MarkingSession.student_submissions)
-                            .selectinload(StudentSubmission.pages)
-                            .selectinload(SubmissionPage.file)
-                        ) \
-                        .filter(MarkingSession.stage != "Evaluated") \
-                        .order_by(MarkingSession.created_at.asc()) \
-                        .limit(3) \
-                        .all()
-
-                    # Filter out ONLY the sessions this specific worker needs to handle
-                    sessions_to_process = [s for s in top_sessions if s.stage == "Conversion Pending"]
+                    sessions_to_process = fetch_pending_sessions()
 
                     if sessions_to_process:
-                        print(f"\nFound {len(sessions_to_process)} sessions in this batch.")
+                        is_waiting_logged = False
+                        logger.info(f"Found {len(sessions_to_process)} sessions in this batch.")
                         
                         # LOAD THE LLM
-                        print("LOADING LLM INTO MEMORY...")
                         converter.load_models()
                         
                         for session in sessions_to_process:
-                            print(f"\n-> Converting Session ID: {session.id}")
+                            logger.info(f"Converting Session ID: {session.id}")
                             
                             session.stage = "Conversion Processing"
+                            session.status = "processing"
                             db.session.commit()
-
-                            all_items_converted = True
                             
                             # PROCESS MARKSCHEMES
-                            for ms in session.markschemes:
-                                if ms.contents and ms.contents.strip():
-                                    print(f"-> Skipping Markscheme {ms.id} (already has contents)")
-                                    continue
-
-                                if ms.file and getattr(ms.file, 'storage_url', None):
-                                    print(f"-> Converting Markscheme: {ms.id}")
-                                    text = converter.convert(ms.file.storage_url)
-
-                                    if text:
-                                        ms.contents = text
-                                        db.session.commit()
-                                    else:
-                                        all_items_converted = False
-                                else:
-                                    all_items_converted = False
-
-                            # PROCESS STUDENT SUBMISSIONS (Stitch pages)
-                            for submission in session.student_submissions:
-                                if submission.contents and submission.contents.strip():
-                                    print(f"-> Skipping Student {submission.student_no} (already has contents)")
-                                    continue
-
-                                print(f"-> Processing Student No: {submission.student_no}")
-                                
-                                submission_texts = []
-                                sorted_pages = sorted(submission.pages, key=lambda p: getattr(p, 'page_no', 0))
-                                
-                                current_submission_success = True
-                                for page in sorted_pages:
-                                    if page.file and getattr(page.file, 'storage_url', None):
-                                        print(f"-> Converting Page {getattr(page, 'page_no', '?')}")
-                                        page_text = converter.convert(page.file.storage_url)
-                                        if page_text:
-                                            submission_texts.append(page_text)
-                                        else:
-                                            current_submission_success = False
-                                    else:
-                                        current_submission_success = False
-                                
-                                # Stitch all pages together with a double newline
-                                if current_submission_success and submission_texts:
-                                    submission.contents = "\n\n".join(submission_texts)
-                                    db.session.commit() # Commit each student as they are done
-                                else:
-                                    all_items_converted = False
+                            ms_success = process_markschemes(session, converter)
+                            sub_success = process_student_submissions(session, converter)
 
                             #MOVE TO NEXT STAGE
-                            if all_items_converted:
-                                print(f"-> All items for session {session.id} converted. Moving to Evaluation Pending.")
+                            if ms_success and sub_success:
+                                logger.info(f"All items for session {session.id} converted. Moving to Evaluation Pending.")
                                 session.stage = "Evaluation Pending"
-                                db.session.commit()
                             else:
-                                print(f"-> Session {session.id} still has pending items. Remaining in Conversion Processing.")
+                                logger.info(f"Session {session.id} still has pending items. Remaining in Conversion Processing.")
+                                session.status = "error"
+                        
+                            db.session.commit()
 
-                        # UNLOAD THE LLM AND PURGE MEMORY
                         converter.unload_models()
                     else:
-                        print("No Conversion Pending sessions in top 3. Passing the baton...", end="\n")
+                        if not is_waiting_logged:
+                            logger.info("No Conversion Pending sessions in top 3. Passing the baton...")
+                            # Toggle the flag so we don't print it again on the next 5-second loop
+                            is_waiting_logged = True
 
                 # Force SQLAlchemy to fetch fresh data next loop
                 db.session.commit()
@@ -148,13 +185,13 @@ def run_worker():
                 # Wait for lock until checking again
                 time.sleep(5)
 
+            # This catches the millisecond race condition if the DB check missed it
             except Timeout:
-                # This catches the millisecond race condition if the DB check missed it
-                print("Evaluation grabbed the lock first. Waiting my turn...", end="\n")
+                logger.info("Evaluation grabbed the lock first. Waiting my turn...")
                 time.sleep(5)
                 
             except Exception as e:
-                print(f"\nAn error occurred while polling: {e}")
+                logger.info(f"An error occurred while polling: {e}")
                 db.session.rollback()
                 time.sleep(5)
 

@@ -51,8 +51,11 @@ class MarkingSession(db.Model):
         "StudentSubmission",
         backref="session",
         lazy=True,
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        order_by="StudentSubmission.student_no"
     )
+
+    user = db.relationship("User", lazy=True)
 
     def to_dict(self):
         return {

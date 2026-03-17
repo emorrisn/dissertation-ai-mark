@@ -18,7 +18,7 @@ class User(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
 
-    writing_style = db.Column(db.String(255), default="modern")
+    writing_style = db.Column(db.JSON, default=lambda:['Balanced'])
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

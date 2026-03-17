@@ -1,7 +1,6 @@
 import sys
 import os
 import time
-import gc # Added for memory management
 from datetime import datetime, timedelta, timezone
 from filelock import FileLock, Timeout
 
@@ -11,100 +10,190 @@ sys.path.append(server_dir)
 
 from api import create_app
 from api.extensions import db
-from api.models import MarkingSession 
+from api.models import MarkingSession, StudentSubmission, MarkingFeedbackItem, MarkingFeedback, User
+from sqlalchemy.orm import selectinload
+
+import logging
+from evaluate import Evaluator 
 
 # The Shared Baton (Must be the EXACT same path as the conversion script)
 LOCK_PATH = os.path.join(server_dir, "worker_processing.lock")
 lock = FileLock(LOCK_PATH, timeout=0)
 
+logging.basicConfig(level=logging.INFO, format='[%(levelname)s] [%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+logger = logging.getLogger(__name__)
+
+def recover_stale_sessions():
+    timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=45) # Evaluation takes longer, give it 45 mins
+    stale_sessions = MarkingSession.query.filter(
+        MarkingSession.stage == "Evaluation Processing",
+        MarkingSession.status.in_(["processing", "error"]),
+        MarkingSession.updated_at < timeout_threshold
+    ).all()
+
+    if stale_sessions:
+        logger.info(f"Found {len(stale_sessions)} crashed sessions. Reverting to Pending...")
+        for session in stale_sessions:
+            session.stage = "Evaluation Pending"
+            session.status = "processing"
+        db.session.commit()
+
+def fetch_pending_sessions():
+    top_sessions = MarkingSession.query \
+        .options(
+            selectinload(MarkingSession.user),
+            selectinload(MarkingSession.markschemes),
+            selectinload(MarkingSession.student_submissions).selectinload(StudentSubmission.feedback)
+        ) \
+        .filter(MarkingSession.stage == "Evaluation Pending", MarkingSession.status == "processing") \
+        .order_by(MarkingSession.created_at.asc()) \
+        .limit(3) \
+        .all()
+    return top_sessions
+
+def compile_markschemes(session) -> str:
+    """Stitches all markscheme texts into a single string."""
+    texts = [ms.contents for ms in session.markschemes if ms.contents]
+    return "\n\n---\n\n".join(texts)
+
+def process_evaluations(session, evaluator):
+    """Processes all students in a session and creates DB records."""
+    markscheme_text = compile_markschemes(session)
+    
+    required_outputs = getattr(session, 'required_outputs', []) 
+    if not required_outputs:
+        required_outputs = ["Give Feedback", "Score Work"]
+
+    if session.user and getattr(session.user, 'writing_style', None):
+        writing_styles = session.user.writing_style
+    else:
+        writing_styles = ["Balanced"]
+
+    all_students_evaluated = True
+
+    for student in session.student_submissions:
+        # TWEAK 1: Check the length of the list just in case it's an empty list object
+        if student.feedback and len(student.feedback) > 0:
+            logger.info(f"Skipping Student {student.student_no} (Already evaluated)")
+            continue
+
+        if not student.contents:
+            logger.warning(f"Student {student.student_no} has no text! Skipping.")
+            all_students_evaluated = False
+            continue
+
+        logger.info(f"Evaluating Student {student.student_no}...")
+        
+        # Call the Orchestrator
+        feedback_variations = evaluator.evaluate(
+            student_text=student.contents, 
+            markscheme_text=markscheme_text, 
+            required_outputs=required_outputs,
+            writing_styles=writing_styles
+        )
+
+        if not isinstance(feedback_variations, list) or len(feedback_variations) == 0:
+            logger.error(f"Failed to generate valid feedback for Student {student.student_no}.")
+            all_students_evaluated = False
+            continue
+
+        # Map the JSON to the Database Models
+        for var_data in feedback_variations:
+            new_feedback = MarkingFeedback(
+                submission_id=student.id,
+                student_no=student.student_no,
+                description=var_data.get("description", "AI Evaluation"),
+                confidence=float(var_data.get("confidence", 0.8)), # Default to 0.8 just in case
+                teacher_comments=""
+            )
+            db.session.add(new_feedback)
+            db.session.flush()
+
+            items_list = var_data.get("items", [])
+            for item_obj in items_list:
+                # TWEAK 2: Ensure item_obj is actually a dictionary before calling .get()
+                if isinstance(item_obj, dict):
+                    output_type = item_obj.get("type")
+                    content_text = item_obj.get("content")
+
+                    if output_type and content_text:
+                        new_item = MarkingFeedbackItem(
+                            feedback_id=new_feedback.id,
+                            type=output_type,
+                            contents=str(content_text)
+                        )
+                        db.session.add(new_item)
+
+        # Commit per student so work isn't lost if the next one fails
+        try:
+            db.session.commit()
+            logger.info(f"Successfully saved variations for Student {student.student_no}.")
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Database error saving student {student.student_no}: {e}")
+            all_students_evaluated = False
+
+    return all_students_evaluated
+
 def run_worker():
-    print("Initializing Evaluation Worker...")
+    logger.info("Initializing Evaluation Worker...")
     app = create_app()
+    evaluator = Evaluator()
 
     with app.app_context():
-        print("Worker successfully connected to the database. Starting polling loop...")
-        
+        logger.info("Worker successfully connected to the database. Starting polling loop...")
+        is_waiting_logged = False
+
         while True:
             try:
-                # Zombie Sweeper (Crash Recovery)
-                timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=30)
-                
-                # Find any sessions that have been stuck in "Evaluation Processing"
-                stale_sessions = MarkingSession.query.filter(
-                    MarkingSession.stage == "Evaluation Processing",
-                    MarkingSession.updated_at < timeout_threshold
-                ).all()
+                recover_stale_sessions()
 
-                if stale_sessions:
-                    print(f"\nFound {len(stale_sessions)} crashed sessions. Reverting to Pending...")
-                    for session in stale_sessions:
-                        session.stage = "Evaluation Pending"
-                    db.session.commit()
-
-                # Database Check (Fast-Fail)
                 if MarkingSession.query.filter_by(stage="Conversion Processing").first():
-                    print("Conversion in progress (DB check). Pausing Evaluation...", end="\n")
+                    logger.info("Conversion in progress. Pausing Evaluation...")
                     time.sleep(5)
                     continue
 
-                # Atomic File Lock (Race Condition Prevention)
                 with lock:
-                    # Fetch the exact same top 3 oldest unfinished sessions
-                    top_sessions = MarkingSession.query \
-                        .filter(MarkingSession.stage != "Evaluated") \
-                        .order_by(MarkingSession.created_at.asc()) \
-                        .limit(3) \
-                        .all()
-
-                    # Filter out ONLY the sessions this specific worker needs to handle
-                    sessions_to_process = [s for s in top_sessions if s.stage == "Evaluation Pending"]
+                    sessions_to_process = fetch_pending_sessions()
 
                     if sessions_to_process:
-                        print(f"\nFound {len(sessions_to_process)} sessions in this batch.")
+                        is_waiting_logged = False
+                        logger.info(f"Found {len(sessions_to_process)} Evaluation Pending sessions.")
                         
-                        # STEP 1: LOAD THE LLM
-                        print(">>> LOADING EVALUATION LLM INTO MEMORY... <<<")
-                        # e.g., eval_model = AutoModelForCausalLM.from_pretrained(...)
-                        
+                        evaluator.load_models()
+
                         for session in sessions_to_process:
-                            print(f"\n -> Evaluating Session ID: {session.id}")
-                            
+                            logger.info(f"Processing Session: {session.id} ---")
                             session.stage = "Evaluation Processing"
                             db.session.commit()
-                            
-                            # ===================================================
-                            # STEP 2: PROCESS WITH LLM
-                            # ===================================================
-                            print(f"....BEEP BOOP (Evaluating Session {session.id} with LLM)....")
-                            # e.g., grade = eval_model.generate(student_text)
-                            
-                            # Mark as completely finished
-                            # session.stage = "Evaluated"
-                            # db.session.commit()
 
-                        # STEP 3: UNLOAD THE LLM AND PURGE MEMORY
-                        print("\n>>> BATCH FINISHED. UNLOADING EVALUATION LLM FROM MEMORY... <<<")
-                        # del eval_model
-                        gc.collect()
-                        # torch.cuda.empty_cache()
-                        print(">>> MEMORY PURGED. <<<")
+                            success = process_evaluations(session, evaluator)
+
+                            if success:
+                                logger.info(f"Session {session.id} fully evaluated. Stage -> Evaluated.")
+                                session.stage = "Evaluated"
+                                session.status = "completed"
+                            else:
+                                logger.info(f"Session {session.id} partially failed. Remaining in Processing.")
+                                session.status = "error"
+                                
+                            db.session.commit()
+
+                        evaluator.unload_models()
 
                     else:
-                        print("No Evaluation Pending sessions in top 3. Passing the baton...", end="\n")
+                        if not is_waiting_logged:
+                            logger.info("No Evaluation Pending sessions. Passing baton...")
+                            is_waiting_logged = True
 
-                # Force SQLAlchemy to fetch fresh data next loop
                 db.session.commit()
-
-                # Wait for lock until checking again
                 time.sleep(5)
 
             except Timeout:
-                # This catches the millisecond race condition if the DB check missed it
-                print("Conversion grabbed the lock first. Waiting my turn...", end="\n")
+                logger.info("Conversion grabbed the lock first. Waiting my turn...")
                 time.sleep(5)
-                
             except Exception as e:
-                print(f"\nAn error occurred while polling: {e}")
+                logger.error(f"Error in polling loop: {e}")
                 db.session.rollback()
                 time.sleep(5)
 

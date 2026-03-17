@@ -6,4 +6,5 @@ from .mark_scheme import MarkScheme
 from .submission_page import SubmissionPage
 from .student_submission import StudentSubmission
 from .marking_feedback import MarkingFeedback
+from .marking_feedback_item import MarkingFeedbackItem
 from .user_update import UserUpdate

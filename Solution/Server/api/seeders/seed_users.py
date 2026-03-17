@@ -10,7 +10,7 @@ def seed_users():
             "name": "Alice Smith",
             "email": "alice.teacher@mail.com",
             "institute_code": "oxford",
-            "writing_style": "formal",
+            "writing_style": ["Balanced", "Technical"],
             "password": "password123"
         },
         {
@@ -18,7 +18,7 @@ def seed_users():
             "name": "Bob Johnson",
             "email": "bob.johnson@mail.com",
             "institute_code": "cambridge",
-            "writing_style": "formal",
+            "writing_style": ["Strict"],
             "password": "password123"
         }
     ]

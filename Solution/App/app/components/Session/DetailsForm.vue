@@ -43,7 +43,14 @@ const studentOptions = Array.from({ length: 50 }, (_, index) => {
   return `${count} Student${count === 1 ? '' : 's'}`;
 });
 
-const actionOptions = ['Give Feedback', 'Score Work', 'Section by Section', 'What to write'];
+const actionOptions = [
+  'Give Feedback',
+  'Score Work',
+  'Section by Section',
+  'What to Write',
+  'Identify Misconceptions',
+  'Next Steps Challenge'
+];
 const markingStore = useMarkingStore();
 
 // 2. Define the Zod Validation Schema
