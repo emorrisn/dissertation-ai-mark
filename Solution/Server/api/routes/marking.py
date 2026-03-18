@@ -3,7 +3,7 @@ from datetime import datetime
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from api.extensions import db
-from api.models import SessionFile, StudentSubmission, MarkingSession, MarkScheme, SubmissionPage, UserUpdate
+from api.models import SessionFile, StudentSubmission, MarkingSession, MarkScheme, SubmissionPage, UserUpdate, MarkingFeedback
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import selectinload
 import uuid
@@ -247,3 +247,24 @@ def list_sessions():
         }
         for s in sessions
     ])
+
+@marking_bp.route('/select-feedback', methods=['POST'])
+@jwt_required()
+def select_feedback():
+    data = request.get_json()
+    submission_id = data.get('submissionId')
+    feedback_id = data.get('feedbackId')
+
+    # Reset ALL feedback for this submission to False first
+    # (This ensures we only ever have one selected at a time, or none if clearing)
+    MarkingFeedback.query.filter_by(submission_id=submission_id).update({"is_selected": False})
+
+    # If a specific feedback ID was provided, set just that one to True
+    if feedback_id:
+        feedback = MarkingFeedback.query.filter_by(id=feedback_id).first_or_404()
+        feedback.is_selected = True
+
+    # Save the changes
+    db.session.commit()
+
+    return jsonify({"message": "Feedback selection updated successfully"}), 200

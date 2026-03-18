@@ -43,11 +43,10 @@
       <UFormField
         name="writingStyle"
         label="Writing Style"
-        description="Describe your preferred writing style, tone, and any specific guidelines you want the AI to follow when generating content for you."
+        description="Select 1 to 2 preferred writing styles for the AI to follow."
         class="flex max-sm:flex-col justify-between items-start gap-4"
-        :ui="{ container: 'w-full' }"
       >
-        <UTextarea v-model="profile.writingStyle" :rows="5" autoresize class="w-full" />
+        <USelect v-model="profile.writingStyle" :items="writingStyleOptions" multiple class="min-w-md" />
       </UFormField>
       <USeparator />
       <UButton label="Save Changes" class="w-fit" type="submit" :disabled="!changes" />
@@ -63,10 +62,14 @@ const profileSchema = z.object({
   name: z.string().min(2, 'Too short'),
   email: z.string().email('Invalid email'),
   username: z.string().min(2, 'Too short'),
-  writingStyle: z.string().optional()
+  writingStyle: z
+    .array(z.string())
+    .min(1, 'Please select at least one style.')
+    .max(2, 'You can select a maximum of two styles.')
 });
 const changes = ref<boolean>(false);
 const authStore = useAuthStore();
+const writingStyleOptions = ['Strict', 'Balanced', 'Encouraging', 'Technical'];
 
 type ProfileSchema = z.output<typeof profileSchema>;
 
@@ -74,7 +77,7 @@ const profile = reactive<Partial<ProfileSchema>>({
   name: authStore.user?.name || 'John Doe',
   email: authStore.user?.email || 'ben@nuxtlabs.com',
   username: authStore.user?.username || 'benjamincanac',
-  writingStyle: authStore.user?.writingStyle
+  writingStyle: authStore.user?.writingStyle || []
 });
 const toast = useToast();
 async function onSubmit(event: FormSubmitEvent<ProfileSchema>) {

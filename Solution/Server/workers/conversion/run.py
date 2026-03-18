@@ -11,7 +11,7 @@ sys.path.append(server_dir)
 from api import create_app
 from api.extensions import db
 from sqlalchemy.orm import selectinload
-from api.models import MarkingSession, MarkScheme, StudentSubmission, SubmissionPage 
+from api.models import MarkingSession, MarkScheme, StudentSubmission, SubmissionPage, UserUpdate
 
 from convert import Converter
 import logging
@@ -166,6 +166,15 @@ def run_worker():
                             if ms_success and sub_success:
                                 logger.info(f"All items for session {session.id} converted. Moving to Evaluation Pending.")
                                 session.stage = "Evaluation Pending"
+
+                                progress_notification = UserUpdate(
+                                    user_id=session.user_id, 
+                                    type="MarkingSessionUpdate",
+                                    title="Halfway There: Conversion Complete!",
+                                    message="Good news! We've successfully processed and converted your documents. Your session is currently halfway done and is now queued for the final AI evaluation phase.",
+                                    related_id=str(session.id)
+                                )
+                                db.session.add(progress_notification)
                             else:
                                 logger.info(f"Session {session.id} still has pending items. Remaining in Conversion Processing.")
                                 session.status = "error"

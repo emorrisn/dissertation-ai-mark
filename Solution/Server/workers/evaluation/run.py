@@ -10,7 +10,7 @@ sys.path.append(server_dir)
 
 from api import create_app
 from api.extensions import db
-from api.models import MarkingSession, StudentSubmission, MarkingFeedbackItem, MarkingFeedback, User
+from api.models import MarkingSession, StudentSubmission, MarkingFeedbackItem, MarkingFeedback, User, UserUpdate
 from sqlalchemy.orm import selectinload
 
 import logging
@@ -173,6 +173,15 @@ def run_worker():
                                 logger.info(f"Session {session.id} fully evaluated. Stage -> Evaluated.")
                                 session.stage = "Evaluated"
                                 session.status = "completed"
+
+                                completion_notification = UserUpdate(
+                                    user_id=session.user_id,
+                                    type="MarkingSessionUpdate",
+                                    title="Evaluation Complete!",
+                                    message="Your session has been successfully evaluated! All marking and feedback generation is 100% complete and ready for your review.",
+                                    related_id=str(session.id),
+                                )
+                                db.session.add(completion_notification)
                             else:
                                 logger.info(f"Session {session.id} partially failed. Remaining in Processing.")
                                 session.status = "error"

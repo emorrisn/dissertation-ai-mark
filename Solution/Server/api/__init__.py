@@ -16,6 +16,7 @@ def create_app():
     app.register_blueprint(auth_bp, url_prefix="/auth")
     app.register_blueprint(user_bp, url_prefix="/user")
     app.register_blueprint(marking_bp, url_prefix="/marking")
+    app.register_blueprint(uploads_bp, url_prefix="/uploads")
 
     app.cli.add_command(fresh)
     app.cli.add_command(seed)

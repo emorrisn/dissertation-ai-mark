@@ -1,3 +1,5 @@
+import re
+
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from api.extensions import db
@@ -22,17 +24,41 @@ def update_profile():
 
     # Safely update fields if they are provided in the payload
     if "name" in data:
+        if len(data["name"]) < 2:
+            return jsonify({"error": "Name is too short"}), 400
         user.name = data["name"]
+        
     if "email" in data:
+        # Basic email validation regex
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", data["email"]):
+            return jsonify({"error": "Invalid email format"}), 400
         user.email = data["email"]
+        
     if "username" in data:
+        if len(data["username"]) < 2:
+            return jsonify({"error": "Username is too short"}), 400
         user.username = data["username"]
+        
     if "writingStyle" in data:
-        user.writing_style = data["writingStyle"] # Assuming snake_case in your DB
+        writing_styles = data["writingStyle"]
+        
+        # Validate data type
+        if not isinstance(writing_styles, list):
+            return jsonify({"error": "writingStyle must be a list of strings"}), 400
+            
+        # Validate min/max constraints
+        if len(writing_styles) < 1 or len(writing_styles) > 2:
+            return jsonify({"error": "Please select between 1 and 2 writing styles"}), 400
+            
+        # Validate allowed values
+        allowed_styles = {"Strict", "Balanced", "Encouraging", "Technical"}
+        if not all(style in allowed_styles for style in writing_styles):
+            return jsonify({"error": "Invalid writing style provided"}), 400
+        
+        user.writing_style = writing_styles
 
     try:
         db.session.commit()
-        # Return the updated profile. Adjust the keys to match your UserProfile type
         return jsonify({
             "id": user.id,
             "name": user.name,

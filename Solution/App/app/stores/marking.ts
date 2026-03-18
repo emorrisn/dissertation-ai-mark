@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import type { MarkingSession, MarkScheme, SessionFile, StudentSubmission } from '~/types';
+import type { MarkingSession, MarkScheme, SessionFile } from '~/types';
 
 export const useMarkingStore = defineStore('marking', {
   state: () => ({
@@ -22,6 +22,7 @@ export const useMarkingStore = defineStore('marking', {
         studentsAmount: 34,
         requiredOutputs: [],
         notes: '',
+        stage: 'Conversion Pending',
         status: 'pending',
         createdAt: now,
         updatedAt: now,
@@ -210,6 +211,26 @@ export const useMarkingStore = defineStore('marking', {
       } catch (error) {
         this.status = 'failed';
         console.error('Failed to finish marking session:', error);
+        throw error;
+      }
+    },
+
+    async selectFeedbackOption(submissionId: string, feedbackId: string | null) {
+      try {
+        const { $api } = useNuxtApp();
+
+        // Adjust the endpoint URL to match your Flask backend
+        const response = await $api('/marking/select-feedback', {
+          method: 'POST',
+          body: {
+            submissionId,
+            feedbackId
+          }
+        });
+
+        return response;
+      } catch (error) {
+        console.error('Failed to update selected feedback on the server:', error);
         throw error;
       }
     }

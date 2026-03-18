@@ -2,7 +2,7 @@ export interface UserProfile {
   id: string;
   username: string;
   email: string;
-  writingStyle?: string;
+  writingStyle: string[];
   name: string;
   instituteCode: string;
   createdAt: string;

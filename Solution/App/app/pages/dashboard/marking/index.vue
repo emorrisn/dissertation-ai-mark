@@ -120,7 +120,9 @@ async function onMarkingSessionClick(session: MarkingSession) {
       return;
     }
     case 'completed':
-      alert('TODO -> send to view pages');
+      session.selectedStudent = 1;
+      markingStore.setCurrentSession(session);
+      router.push(`/dashboard/marking/review`);
       return;
     case 'error':
       await infoModal.open({
