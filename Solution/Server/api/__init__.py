@@ -5,9 +5,9 @@ from api.routes import *
 from flask_cors import CORS
 from api.commands import fresh, seed, clear_uploads
 
-def create_app():
+def create_app(config_object=Config):
     app = Flask(__name__)
-    app.config.from_object(Config)
+    app.config.from_object(config_object)
 
     db.init_app(app)
     migrate.init_app(app, db)

@@ -10,3 +10,6 @@ Flask-CORS>=4.0.0
 filelock
 pdfminer
 docx2txt
+pytest
+pytest-flask
+pytest-dotenv

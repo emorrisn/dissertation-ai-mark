@@ -79,7 +79,8 @@ const actionItems = computed<NavigationMenuItem[]>(() => {
             }"
           >
             <template #header="{ collapsed }">
-              <span class="text-lg font-semibold tracking-tight mx-auto">{{ 'Magic Mark' }}</span>
+              <span v-if="!collapsed" class="text-lg font-semibold tracking-tight mx-auto">{{ 'Magic Mark' }}</span>
+              <span v-else class="text-lg font-semibold tracking-tight mx-auto">{{ 'MM' }}</span>
             </template>
 
             <template #default="{ collapsed }">

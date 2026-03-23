@@ -1,24 +1,27 @@
-import { fileURLToPath } from 'node:url'
-import { defineConfig, devices } from '@playwright/test'
-import type { ConfigOptions } from '@nuxt/test-utils/playwright'
+import { defineConfig, devices } from '@playwright/test';
 
-export default defineConfig<ConfigOptions>({
-  testDir: './tests',
-  fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+export default defineConfig({
+  testDir: './test/e2e',
+
+  fullyParallel: false,
+  workers: 1,
+
   use: {
-    trace: 'on-first-retry',
-    nuxt: {
-      rootDir: fileURLToPath(new URL('.', import.meta.url)),
-    },
+    baseURL: 'http://localhost:3000',
+    headless: true
   },
+
+  webServer: {
+    command: 'npm run dev:all',
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+    timeout: 360_000
+  },
+
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-  ],
-})
+      use: { ...devices['Desktop Chrome'] }
+    }
+  ]
+});

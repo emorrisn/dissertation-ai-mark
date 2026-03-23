@@ -6,6 +6,9 @@
   >
     <template #header>
       <UDashboardNavbar title="Past Sessions">
+        <template #leading>
+          <UDashboardSidebarCollapse />
+        </template>
         <template #right>
           <div class="flex items-center gap-2">
             <UButton
