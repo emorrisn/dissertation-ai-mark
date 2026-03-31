@@ -60,7 +60,7 @@
           }}/{{ markingStore.currentSession?.studentsAmount ? markingStore.currentSession.studentsAmount - 1 : 1 }})
         </UButton>
       </div>
-      <input type="file" accept="image/*" class="hidden" ref="fileInput" @change="handleFileUpload" />
+      <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="handleFileUpload" />
     </template>
   </UDashboardPanel>
 </template>

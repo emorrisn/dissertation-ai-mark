@@ -10,10 +10,10 @@
 
     <UPageCard title="Password" description="Confirm your current password before setting a new one." variant="subtle">
       <UForm
+        ref="passwordChangeForm"
         :schema="passwordSchema"
         :state="passwordState"
         class="flex flex-col gap-4 max-w-xs"
-        ref="passwordChangeForm"
         @submit="onPasswordSubmit"
       >
         <UFormField name="currentPassword">
@@ -101,7 +101,7 @@ async function onDeleteAccount() {
     try {
       await authStore.deleteAccount();
       // Note: No toast needed here because the store redirects them to /login
-    } catch (error) {
+    } catch {
       toast.add({ title: 'Error', description: 'Failed to delete account. Please try again.', color: 'error' });
     }
   }

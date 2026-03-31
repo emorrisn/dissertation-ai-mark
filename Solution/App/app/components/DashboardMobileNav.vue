@@ -7,9 +7,9 @@
       <button
         v-for="item in items"
         :key="item.label"
-        @click="navigate(item.to)"
         class="flex-1 flex flex-col items-center justify-center gap-1"
         :aria-current="isActive(item) ? 'page' : undefined"
+        @click="navigate(item.to)"
       >
         <Icon
           :name="item.icon"

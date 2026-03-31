@@ -1,3 +1,7 @@
+// This plugin sets up a client-side auto-refresh functionality.
+// It fetches data for marking sessions and updates every 30 seconds.
+// The refresh is paused when the tab is inactive to save resources.
+// It also listens for a 'session-updated' event to trigger an immediate refresh.
 export default defineNuxtPlugin(() => {
   const markingSessionsStore = useMarkingStore();
   const updatesStore = useUpdatesStore();

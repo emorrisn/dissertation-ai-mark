@@ -69,7 +69,7 @@
           {{ 'Previous Student' }}
         </UButton>
         <UButton color="primary" size="lg" class="w-2/3 sm:w-1/3 justify-center" @click="feedbackModal.open()">
-          View Feedback (3)
+          View Feedback
         </UButton>
         <UButton
           color="neutral"

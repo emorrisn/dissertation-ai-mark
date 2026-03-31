@@ -41,7 +41,7 @@ definePageMeta({
               :loading="institutes.length === 0"
             />
 
-            <UButton @click="login()" color="primary" :disabled="value == null">Continue</UButton>
+            <UButton color="primary" :disabled="value == null" @click="login()">Continue</UButton>
           </div>
         </div>
       </template>

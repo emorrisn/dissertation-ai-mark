@@ -1,3 +1,6 @@
+# This file defines the configuration for the Flask application.
+# It uses separate classes for production/development and testing environments.
+
 import os
 from dotenv import load_dotenv
 

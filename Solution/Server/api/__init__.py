@@ -6,6 +6,10 @@ from flask_cors import CORS
 from api.commands import fresh, seed, clear_uploads
 
 def create_app(config_object=Config):
+    """
+    Application factory that creates and configures the Flask app.
+    This function sets up the database, authentication, and routes, and registers custom CLI commands.
+    """
     app = Flask(__name__)
     app.config.from_object(config_object)
 

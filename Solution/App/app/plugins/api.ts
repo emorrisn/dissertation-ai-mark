@@ -1,6 +1,10 @@
 import { defineNuxtPlugin } from '#app';
 import type { FetchOptions } from 'ofetch';
 
+// This plugin creates a custom `$fetch` instance that can be used to make API calls.
+// It automatically adds the base URL and the authentication token to every request.
+// It also handles 401 errors by trying to refresh the access token.
+
 interface CustomFetchOptions extends FetchOptions {
   _retry?: boolean;
 }

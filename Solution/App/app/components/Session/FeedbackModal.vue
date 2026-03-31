@@ -64,7 +64,7 @@
 
         <UAccordion
           :items="selectedFeedback!.items.map((item) => ({ label: item.type, content: item.contents }))"
-          multiple
+          type="multiple"
         >
           <template #item="{ item }">
             <div
@@ -124,7 +124,7 @@ const selectFeedback = async (feedbackId: string) => {
   // 2. Sync with the backend
   try {
     await markingStore.selectFeedbackOption(currentSubmission.value.id, feedbackId);
-  } catch (error) {
+  } catch {
     // If the API call fails, revert the UI and alert the user
     currentSubmission.value.feedback!.forEach((f: any) => {
       f.isSelected = false;
@@ -150,7 +150,7 @@ const clearSelection = async () => {
   // 2. Sync with the backend (pass null/empty to clear the selection on the server)
   try {
     await markingStore.selectFeedbackOption(currentSubmission.value.id, null);
-  } catch (error) {
+  } catch {
     console.error('Failed to clear feedback selection on server');
   }
 };

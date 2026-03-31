@@ -92,7 +92,7 @@ async function onSubmit(event: FormSubmitEvent<ProfileSchema>) {
     });
 
     changes.value = false;
-  } catch (error) {
+  } catch {
     toast.add({
       title: 'Error',
       description: 'Failed to update settings. Please try again. ',

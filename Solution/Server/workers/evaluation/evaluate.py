@@ -135,7 +135,7 @@ class Evaluator:
                     definition = self.output_definitions.get(out_type, "Provide relevant feedback.")
                     
                     content = self.item_gen.generate_item(
-                        clean_text, markscheme_text, style, style_description, summary_desc, out_type, definition
+                        clean_text, markscheme_text, style, style_description, "", out_type, definition
                     )
                     variation_items.append({"type": out_type, "content": content})
                 
@@ -181,7 +181,7 @@ class Evaluator:
             gen_kwargs = dict(
                 **inputs,
                 max_new_tokens=max_tokens,
-                temperature=0.3, # Bumped slightly to 0.3 for more natural text generation
+                temperature=0.6, 
                 do_sample=True,
                 use_cache=True,
                 eos_token_id=self.tokenizer.eos_token_id,
