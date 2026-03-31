@@ -35,15 +35,15 @@ window.HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
 
 window.HTMLCanvasElement.prototype.toDataURL = mockToDataURL;
 
-// ✅ Mock toBlob (used in your component)
+//  Mock toBlob (used in your component)
 HTMLCanvasElement.prototype.toBlob = function (callback) {
   callback(new Blob(['mock'], { type: 'image/jpeg' }));
 };
 
-// ✅ Mock URL.createObjectURL
+// Mock URL.createObjectURL
 global.URL.createObjectURL = vi.fn(() => 'blob:mock-url');
 
-// ✅ Mock image compression
+// Mock image compression
 vi.mock('browser-image-compression', () => ({
   default: vi.fn(async (file) => file)
 }));

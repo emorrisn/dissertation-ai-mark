@@ -63,7 +63,6 @@ let stream: MediaStream | null = null;
 
 const confirmationModal = overlay.create(LazyUIConfirmationPopup);
 
-// Init camera
 async function initCamera() {
   cameraLoading.value = true;
   error.value = null;
@@ -111,7 +110,6 @@ async function initCamera() {
   }
 }
 
-// Stop camera
 function stopCamera() {
   if (stream) {
     stream.getTracks().forEach((track) => track.stop());
@@ -123,13 +121,11 @@ function stopCamera() {
   }
 }
 
-// Switch camera
 async function switchCamera() {
   facingMode.value = facingMode.value === 'environment' ? 'user' : 'environment';
   await initCamera();
 }
 
-// Flash effect
 function triggerFlash() {
   flash.value = true;
   setTimeout(() => (flash.value = false), 120);
@@ -208,7 +204,6 @@ onUnmounted(() => {
   stopCamera();
 });
 
-// Expose refs and methods for parent
 defineExpose({
   videoRef,
   initCamera,

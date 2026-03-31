@@ -60,7 +60,7 @@ describe('API Plugin', () => {
     const plugin = apiPlugin();
     const { onResponseError } = plugin.provide.api;
 
-    // 🔑 IMPORTANT: update token during refresh
+    // update token during refresh
     mockAuthStore.refreshAccessToken.mockImplementation(async () => {
       mockAuthStore.token = 'test-token';
     });

@@ -70,9 +70,7 @@ class FeedbackEvaluator:
                 logger.warning(f"Failed to parse confidence score for {style}. Defaulting to 0.85. Raw: {raw_conf}")
                 confidence = 0.85
 
-            # ==========================================
             # Python safely packages the data
-            # ==========================================
             summaries[style] = {
                 "description": clean_desc,
                 "confidence": confidence

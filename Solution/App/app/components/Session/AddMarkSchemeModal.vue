@@ -187,6 +187,7 @@ const schema = z.object({
 
 type Schema = z.output<typeof schema>;
 const fileUploading = ref(false);
+const toast = useToast();
 
 function handleTextSubmit(event: FormSubmitEvent<Schema>) {
   if (!currentSession.value) return;
@@ -204,9 +205,6 @@ async function handleFileSubmit() {
   }
   fileUploading.value = true;
   try {
-    // Simulate API call to upload the file
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
     const now = new Date().toISOString();
     const mockSessionFile: SessionFile = {
       id: crypto.randomUUID(),
@@ -221,7 +219,11 @@ async function handleFileSubmit() {
     resetAndClose();
   } catch (error) {
     console.error('File upload failed:', error);
-    // In a real app, show a toast notification to the user
+    toast.add({
+      title: 'Error',
+      description: 'Failed to add file. Please try again.',
+      color: 'error'
+    });
   } finally {
     fileUploading.value = false;
   }
