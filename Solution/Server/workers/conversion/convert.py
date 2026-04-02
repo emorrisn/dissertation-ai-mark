@@ -8,6 +8,8 @@ from converters.pdf import extract_pdf_text
 from converters.docx import extract_docx_text
 from converters.txt import extract_txt_text
 
+from sanitise import Sanitiser
+
 logger = logging.getLogger(__name__)
 
 class Converter:
@@ -15,6 +17,7 @@ class Converter:
         """Initialize the router and pass it the root Server directory."""
         self.server_dir = server_dir
         self.image_converter = ImageConverter()
+        self.sanitiser = Sanitiser(strict=True)
 
         # Define supported extensions
         self.IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".heic", ".webp", ".bmp", ".gif"}
@@ -55,18 +58,19 @@ class Converter:
         # Route to the correct converter
         logger.info(f"Routing file with extension '{ext}'...")
 
+        result = ""
+        
         if ext == ".pdf":
-            return extract_pdf_text(file_bytes, image_converter=self.image_converter) or ""
-            
+            result = extract_pdf_text(file_bytes, image_converter=self.image_converter) or ""
         elif ext == ".docx":
-            return extract_docx_text(file_bytes) or ""
-            
+            result = extract_docx_text(file_bytes) or ""
         elif ext in self.TEXT_EXTS:
-            return extract_txt_text(file_bytes) or ""
-            
+            result = extract_txt_text(file_bytes) or ""
         elif ext in self.IMAGE_EXTS:
-            return self.image_converter.convert(file_bytes) or ""
-            
+            result = self.image_converter.convert(file_bytes) or ""
         else:
             logger.warning(f"Unsupported file extension '{ext}'. Returning empty string.")
             return ""
+        
+        # Apply sanitisation here
+        return self.sanitiser.sanitise(result)
